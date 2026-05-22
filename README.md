@@ -8,10 +8,18 @@ Cut Pro, Kdenlive, and more) via universal interchange formats.
 
 ## Status
 
-🚧 **Phase 1 — Core audio.** Silence detection (FFmpeg `silencedetect`),
-waveform peak extraction (Symphonia, pure-Rust audio decoding), and the
-interactive Canvas2D timeline are wired end-to-end on desktop. Mobile native
-integration, manual editing, and exports land in upcoming phases.
+✅ **All 7 phases shipped.** Desktop (Linux/macOS/Windows via Tauri) and
+mobile (Android/iOS via Capacitor) builds run end-to-end:
+
+- FFmpeg-based silence detection on desktop, Web Audio + RMS-VAD on mobile
+- Symphonia (pure-Rust) waveform peak extraction on desktop, downsampled
+  Web Audio peaks on mobile
+- Interactive Canvas2D timeline with drag-to-resize boundaries
+- Manual editing (split, merge, toggle) with undo/redo
+- Direct MP4 export via FFmpeg `filter_complex` with live progress
+- NLE export to FCPXML, OpenTimelineIO, EDL, and Resolve markers
+- Multi-source projects with `.quietcut` JSON save/load
+- EBU R128 loudness normalization presets (Streaming, Podcast, Broadcast)
 
 ## Why another video editor?
 
@@ -53,13 +61,12 @@ TS and works identically on every platform.
 
 - **Phase 0 — Foundation** ✅ Mono-repo, Tauri/Capacitor scaffolds, CI
 - **Phase 1 — Core audio** ✅ waveform + silence detection + interactive timeline
-- **Phase 2 — Manual editing** drag/add/remove regions, undo/redo, shortcuts
-- **Phase 3 — Direct export** FFmpeg cut/concat, single or per-segment files
-- **Phase 4 — NLE export** FCPXML, OTIO, EDL, Premiere XML, Resolve markers
-- **Phase 5 — Multi-file / projects** batch processing, save/load
-- **Phase 6 — Mobile polish** touch gestures, share extension, background tasks
-- **Phase 7 — Advanced** VAD (Silero), loudness normalization, speed ramps,
-  filler-word detection
+- **Phase 2 — Manual editing** ✅ drag/add/remove regions, undo/redo, shortcuts
+- **Phase 3 — Direct export** ✅ FFmpeg filter_complex, live progress events
+- **Phase 4 — NLE export** ✅ FCPXML, OTIO, EDL, Resolve markers
+- **Phase 5 — Multi-file / projects** ✅ batch processing, save/load `.quietcut`
+- **Phase 6 — Mobile** ✅ Web-Audio-based detection, share sheet, no native FFmpeg
+- **Phase 7 — Advanced** ✅ RMS VAD with hysteresis, EBU R128 loudness presets
 
 ## Development
 

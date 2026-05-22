@@ -3,6 +3,7 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '@quietcut/ui';
 import type { MediaSource, Region } from '@quietcut/core';
+import { LOUDNESS_PRESETS, loudnessFilterArg } from '@quietcut/core';
 import {
   buildFilterComplexExport,
   exportEDL,
@@ -53,6 +54,7 @@ export function ExportPanel({ source, regions, projectName }: Props) {
   const [progress, setProgress] = useState<Progress | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loudnessId, setLoudnessId] = useState<string>('none');
 
   useEffect(() => {
     const unsub = listen<{
@@ -85,9 +87,12 @@ export function ExportPanel({ source, regions, projectName }: Props) {
     setBusy(true);
     setProgress({ percent: 0, outTimeMs: 0, speed: null });
     try {
+      const preset = LOUDNESS_PRESETS.find((p) => p.id === loudnessId);
+      const extraArgs = ['-preset', 'veryfast', '-crf', '20'];
+      if (preset) extraArgs.push('-af', loudnessFilterArg(preset));
       const plan = buildFilterComplexExport(
         { source, regions, projectName },
-        { outputPath, extraArgs: ['-preset', 'veryfast', '-crf', '20'] },
+        { outputPath, extraArgs },
       );
       const jobId = `export-${++exportCounter}`;
       const result = await runExportCut({
@@ -139,6 +144,23 @@ export function ExportPanel({ source, regions, projectName }: Props) {
         <Button onClick={exportSingleFile} disabled={busy || keptCount === 0}>
           {busy ? `Exporting… ${progress?.percent.toFixed(0) ?? 0}%` : 'Export single MP4'}
         </Button>
+      </div>
+      <div className="flex items-center gap-2 text-xs text-zinc-400">
+        <label htmlFor="loudness-select">Loudness:</label>
+        <select
+          id="loudness-select"
+          value={loudnessId}
+          onChange={(e) => setLoudnessId(e.target.value)}
+          disabled={busy}
+          className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-200"
+        >
+          <option value="none">None (skip normalization)</option>
+          {LOUDNESS_PRESETS.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.label}
+            </option>
+          ))}
+        </select>
       </div>
       {progress && busy && (
         <div className="space-y-1">

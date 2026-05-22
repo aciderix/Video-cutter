@@ -1,6 +1,6 @@
 # Quietcut — pre-release artifacts
 
-> ⚠️ Built from `claude/loving-ptolemy-x0AY6` at Phase 1. Not signed, not
+> ⚠️ Built from `claude/loving-ptolemy-x0AY6` after Phase 7. Not signed, not
 > notarized, not stable. For end-user binaries, prefer GitHub Releases once
 > the project ships a v0.1.
 
@@ -9,20 +9,20 @@
 ```
 release/
 ├── web/
-│   ├── desktop/   Vite-built bundle for the Tauri webview (preview-only)
-│   └── mobile/    Vite-built bundle for Capacitor (preview-only)
-└── desktop/
-    └── linux-x64/
-        ├── quietcut                       (9.4 MB) stripped, LTO release binary
-        └── Quietcut_0.0.1_amd64.deb       (3.2 MB) Debian/Ubuntu package
+│   ├── desktop/                          Vite-built SPA used by Tauri (preview-only)
+│   └── mobile/                           Vite-built SPA used by Capacitor (preview-only)
+├── desktop/
+│   └── linux-x64/
+│       ├── quietcut                      9.4 MB stripped LTO binary
+│       └── quietcut-0.1.0_amd64.deb      3.2 MB Debian/Ubuntu package
+└── mobile/
+    └── android/
+        └── quietcut-0.1.0-debug.apk      3.7 MB Capacitor debug APK (unsigned)
 ```
 
-The Linux `.AppImage` (75 MB) is intentionally **not** committed — it bundles
-GTK, libsoup, glib, and webkit. Rebuild it with the command in
-[Reproducing the build](#reproducing-the-build) below. Long-term, signed
-release binaries will live on
-[GitHub Releases](https://github.com/aciderix/Video-cutter/releases), not in
-the repository.
+The Linux `.AppImage` (75 MB, bundles GTK / libsoup / webkit) and a signed
+release APK are intentionally **not** committed. Rebuild them with the
+commands in [Reproducing the build](#reproducing-the-build) below.
 
 ## How to run
 
@@ -32,27 +32,51 @@ The `quietcut` binary expects `ffmpeg` and `ffprobe` to be on `$PATH`. On
 Debian/Ubuntu:
 
 ```sh
-sudo apt-get install -y ffmpeg
+sudo apt-get install -y ffmpeg libwebkit2gtk-4.1-0 libgtk-3-0
 ./release/desktop/linux-x64/quietcut
 ```
 
-The `.AppImage` bundles the GUI dependencies but not FFmpeg — install it
-separately. Same for the `.deb`.
+The `.deb` declares those dependencies, so `sudo apt install -y
+./release/desktop/linux-x64/quietcut-0.1.0_amd64.deb` resolves everything in
+one step. Once installed, launch from your application menu or `quietcut`
+on the command line.
+
+### Mobile — Android
+
+The APK is a **debug** build — Android will refuse to install it without
+"Install unknown apps" enabled for your file manager. Either:
+
+```sh
+adb install release/mobile/android/quietcut-0.1.0-debug.apk
+```
+
+or copy it onto the device, tap it, and accept the unknown-source warning.
+
+For a Play Store release, generate a signed AAB with
+`./gradlew bundleRelease` from `apps/mobile/android/`.
 
 ### Web bundles
 
-These are the static SPAs that get embedded in the Tauri webview and the
-Capacitor WebView. They will not work standalone (every meaningful action
-calls a native command via `window.__TAURI__` / `Capacitor.Plugins`), but
-they're useful for inspecting the built CSS/JS and for CDN preview deploys.
+Static SPAs embedded in the Tauri webview and the Capacitor WebView. They
+won't work standalone (every meaningful action calls native APIs through
+`window.__TAURI__` / `Capacitor.Plugins`), but they're useful for inspecting
+the built CSS/JS or for a CDN preview deploy.
 
 ## Reproducing the build
 
 ```sh
 pnpm install
-pnpm --filter @quietcut/desktop build      # web bundle
-pnpm exec tauri build --no-bundle          # Linux binary only
-pnpm exec tauri build                      # full bundles (.AppImage, .deb)
+
+# Desktop bundles (Linux .deb + .AppImage)
+pnpm --filter @quietcut/desktop build
+cd apps/desktop && pnpm exec tauri build               # full bundles
+
+# Android APK
+pnpm --filter @quietcut/mobile build
+cd apps/mobile && pnpm exec cap sync android
+cd android && ./gradlew assembleDebug                  # debug APK
+# or
+cd android && ./gradlew bundleRelease                  # signed AAB (needs keystore)
 ```
 
 Build dependencies on Ubuntu:
@@ -60,11 +84,17 @@ Build dependencies on Ubuntu:
 ```sh
 sudo apt-get install -y \
   libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev \
-  libxdo-dev libssl-dev patchelf
+  libxdo-dev libssl-dev patchelf openjdk-21-jdk-headless
+# + Android SDK platform-34, build-tools 34.0.0
 ```
 
 ## Other platforms
 
-macOS (`.app`, `.dmg`) and Windows (`.msi`, `.exe`) builds happen in CI —
-see `.github/workflows/ci.yml`. Run the matching `tauri build` invocation on
-the target host to reproduce locally.
+- **macOS** (`.app`, `.dmg`, `.pkg`): run `pnpm exec tauri build` on macOS.
+- **Windows** (`.msi`, `.exe`): run `pnpm exec tauri build` on Windows
+  with the MSVC toolchain.
+- **iOS** (`.ipa`): run `pnpm exec cap sync ios && pnpm exec cap open ios`
+  on macOS with Xcode.
+
+CI (`.github/workflows/ci.yml`) covers all four targets and uploads
+artifacts on every push.

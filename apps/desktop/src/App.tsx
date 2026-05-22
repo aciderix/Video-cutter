@@ -321,7 +321,7 @@ function Header({
         <Button variant="ghost" size="sm" onClick={onRedo} disabled={!canRedo}>
           Redo
         </Button>
-        <span className="ml-3 text-xs text-zinc-500">v0.0.6 — Phase 5 projects</span>
+        <span className="ml-3 text-xs text-zinc-500">v0.1.0 — Phase 7 advanced</span>
       </div>
     </header>
   );
