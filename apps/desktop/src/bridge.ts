@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { writeTextFile } from '@tauri-apps/plugin-fs';
 import type { MediaSource, SilenceDetectionSettings } from '@quietcut/core';
 import type { RawSilenceInterval } from '@quietcut/core';
 
@@ -46,4 +47,8 @@ export interface ExportResult {
 
 export async function runExportCut(request: ExportRequest): Promise<ExportResult> {
   return await invoke<ExportResult>('export_cut', { request });
+}
+
+export async function writeFile(path: string, contents: string): Promise<void> {
+  await writeTextFile(path, contents);
 }

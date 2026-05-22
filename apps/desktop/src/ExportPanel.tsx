@@ -3,8 +3,28 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '@quietcut/ui';
 import type { MediaSource, Region } from '@quietcut/core';
-import { buildFilterComplexExport } from '@quietcut/exporters';
-import { runExportCut } from './bridge.ts';
+import {
+  buildFilterComplexExport,
+  exportEDL,
+  exportFCPXML,
+  exportOTIO,
+  exportResolveMarkers,
+} from '@quietcut/exporters';
+import { runExportCut, writeFile } from './bridge.ts';
+
+type NleFormat = 'fcpxml' | 'otio' | 'edl' | 'resolve';
+
+const NLE: Record<NleFormat, { label: string; ext: string; mime: string; build: typeof exportEDL }> = {
+  fcpxml: { label: 'Final Cut Pro XML', ext: 'fcpxml', mime: 'application/xml', build: exportFCPXML },
+  otio: { label: 'OpenTimelineIO', ext: 'otio', mime: 'application/json', build: exportOTIO },
+  edl: { label: 'CMX 3600 EDL', ext: 'edl', mime: 'text/plain', build: exportEDL },
+  resolve: {
+    label: 'DaVinci Resolve markers (TSV)',
+    ext: 'txt',
+    mime: 'text/tab-separated-values',
+    build: exportResolveMarkers,
+  },
+};
 
 interface Props {
   source: MediaSource;
@@ -78,6 +98,25 @@ export function ExportPanel({ source, regions, projectName }: Props) {
     }
   };
 
+  const exportNle = async (format: NleFormat) => {
+    setError(null);
+    setStatus(null);
+    const def = NLE[format];
+    const defaultName = source.name.replace(/\.[^./]+$/, '') + '.' + def.ext;
+    const outputPath = await save({
+      defaultPath: defaultName,
+      filters: [{ name: def.label, extensions: [def.ext] }],
+    });
+    if (!outputPath) return;
+    try {
+      const content = def.build({ source, regions, projectName });
+      await writeFile(outputPath, content);
+      setStatus(`Wrote ${def.label} → ${outputPath}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   const keptCount = regions.filter((r) => r.kept).length;
 
   return (
@@ -107,6 +146,22 @@ export function ExportPanel({ source, regions, projectName }: Props) {
           </p>
         </div>
       )}
+      <div className="border-t border-zinc-800 pt-3">
+        <p className="mb-2 text-xs text-zinc-500">Hand off to an NLE — no re-encode needed.</p>
+        <div className="flex flex-wrap gap-2">
+          {(Object.keys(NLE) as NleFormat[]).map((fmt) => (
+            <Button
+              key={fmt}
+              variant="secondary"
+              size="sm"
+              onClick={() => exportNle(fmt)}
+              disabled={busy || keptCount === 0}
+            >
+              {NLE[fmt].label}
+            </Button>
+          ))}
+        </div>
+      </div>
       {status && <p className="text-xs text-emerald-400">{status}</p>}
       {error && <p className="text-xs text-rose-400">{error}</p>}
     </div>

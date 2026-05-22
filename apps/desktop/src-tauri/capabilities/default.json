@@ -3,5 +3,17 @@
   "identifier": "default",
   "description": "Default capability for Quietcut desktop app",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "fs:default", "shell:allow-open"]
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "fs:default",
+    "fs:allow-write-text-file",
+    "fs:allow-read-text-file",
+    "fs:scope-home-recursive",
+    "fs:scope-desktop-recursive",
+    "fs:scope-document-recursive",
+    "fs:scope-download-recursive",
+    "fs:scope-video-recursive",
+    "shell:allow-open"
+  ]
 }
