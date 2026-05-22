@@ -16,6 +16,9 @@ pub enum AppError {
 
     #[error("Unsupported media: {0}")]
     UnsupportedMedia(String),
+
+    #[error("Audio decoding failed: {0}")]
+    Decode(String),
 }
 
 impl Serialize for AppError {

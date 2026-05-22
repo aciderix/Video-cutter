@@ -27,3 +27,8 @@ export async function runSilenceDetection(
 ): Promise<RawSilenceInterval[]> {
   return await invoke<RawSilenceInterval[]>('detect_silences', { path, settings });
 }
+
+export async function computePeaks(path: string, targetBins = 2048): Promise<Float32Array> {
+  const peaks = await invoke<number[]>('compute_peaks', { path, targetBins });
+  return Float32Array.from(peaks);
+}

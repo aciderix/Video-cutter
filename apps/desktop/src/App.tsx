@@ -10,13 +10,15 @@ import {
   type SilenceDetectionSettings,
 } from '@quietcut/core';
 import { useStore } from './store.ts';
-import { pickMediaFiles, analyzeMedia, runSilenceDetection } from './bridge.ts';
+import { pickMediaFiles, analyzeMedia, runSilenceDetection, computePeaks } from './bridge.ts';
 
 export function App() {
   const source = useStore((s) => s.source);
   const regions = useStore((s) => s.regions);
+  const peaks = useStore((s) => s.peaks);
   const setSource = useStore((s) => s.setSource);
   const setRegions = useStore((s) => s.setRegions);
+  const setPeaks = useStore((s) => s.setPeaks);
   const [settings, setSettings] = useState<SilenceDetectionSettings>(DEFAULT_DETECTION);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,10 +29,15 @@ export function App() {
       const paths = await pickMediaFiles();
       if (paths.length === 0) return;
       setBusy(true);
+      setPeaks(null);
       const src = await analyzeMedia(paths[0]!);
       setSource(src);
-      const silences = await runSilenceDetection(src.path, settings);
+      const [silences, wavePeaks] = await Promise.all([
+        runSilenceDetection(src.path, settings),
+        computePeaks(src.path, 2048).catch(() => null),
+      ]);
       setRegions(buildRegionsFromSilences(src.duration, silences, settings));
+      if (wavePeaks) setPeaks(wavePeaks);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -45,6 +52,10 @@ export function App() {
     try {
       const silences = await runSilenceDetection(source.path, settings);
       setRegions(buildRegionsFromSilences(source.duration, silences, settings));
+      if (!peaks) {
+        const wavePeaks = await computePeaks(source.path, 2048).catch(() => null);
+        if (wavePeaks) setPeaks(wavePeaks);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -66,7 +77,7 @@ export function App() {
           {!source ? (
             <EmptyState onOpen={open} busy={busy} />
           ) : (
-            <SourceView source={source} regions={regions} busy={busy} />
+            <SourceView source={source} regions={regions} peaks={peaks} busy={busy} />
           )}
           {error && (
             <p role="alert" className="mt-4 rounded-md bg-rose-950 px-4 py-2 text-rose-200">
@@ -83,7 +94,7 @@ function Header() {
   return (
     <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
       <h1 className="text-lg font-semibold tracking-tight">Quietcut</h1>
-      <span className="text-xs text-zinc-500">v0.0.1 — Phase 0 scaffold</span>
+      <span className="text-xs text-zinc-500">v0.0.2 — Phase 1 core audio</span>
     </header>
   );
 }
@@ -106,10 +117,12 @@ function EmptyState({ onOpen, busy }: { onOpen: () => void; busy: boolean }) {
 function SourceView({
   source,
   regions,
+  peaks,
   busy,
 }: {
   source: MediaSource;
   regions: Region[];
+  peaks: Float32Array | null;
   busy: boolean;
 }) {
   const savedSeconds = source.duration - outputDuration(regions);
@@ -131,7 +144,7 @@ function SourceView({
       </div>
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
         <WaveformTimeline
-          peaks={null}
+          peaks={peaks}
           regions={regions}
           duration={source.duration}
           currentTime={0}

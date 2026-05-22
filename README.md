@@ -8,8 +8,10 @@ Cut Pro, Kdenlive, and more) via universal interchange formats.
 
 ## Status
 
-🚧 **Phase 0 — Foundation.** The mono-repo and platform scaffolds are in place.
-Silence detection, waveform rendering, and exports land in upcoming phases.
+🚧 **Phase 1 — Core audio.** Silence detection (FFmpeg `silencedetect`),
+waveform peak extraction (Symphonia, pure-Rust audio decoding), and the
+interactive Canvas2D timeline are wired end-to-end on desktop. Mobile native
+integration, manual editing, and exports land in upcoming phases.
 
 ## Why another video editor?
 
@@ -50,7 +52,7 @@ TS and works identically on every platform.
 ## Roadmap
 
 - **Phase 0 — Foundation** ✅ Mono-repo, Tauri/Capacitor scaffolds, CI
-- **Phase 1 — Core audio** waveform + silence detection + interactive timeline
+- **Phase 1 — Core audio** ✅ waveform + silence detection + interactive timeline
 - **Phase 2 — Manual editing** drag/add/remove regions, undo/redo, shortcuts
 - **Phase 3 — Direct export** FFmpeg cut/concat, single or per-segment files
 - **Phase 4 — NLE export** FCPXML, OTIO, EDL, Premiere XML, Resolve markers

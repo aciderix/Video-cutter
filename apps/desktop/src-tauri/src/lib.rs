@@ -1,6 +1,8 @@
 mod commands;
 mod error;
+mod ffmpeg;
 mod media;
+mod peaks;
 
 use tauri::Manager;
 
@@ -21,6 +23,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::analyze_media,
             commands::detect_silences,
+            commands::compute_peaks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
