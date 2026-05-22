@@ -14,8 +14,16 @@ import { runExportCut, writeFile } from './bridge.ts';
 
 type NleFormat = 'fcpxml' | 'otio' | 'edl' | 'resolve';
 
-const NLE: Record<NleFormat, { label: string; ext: string; mime: string; build: typeof exportEDL }> = {
-  fcpxml: { label: 'Final Cut Pro XML', ext: 'fcpxml', mime: 'application/xml', build: exportFCPXML },
+const NLE: Record<
+  NleFormat,
+  { label: string; ext: string; mime: string; build: typeof exportEDL }
+> = {
+  fcpxml: {
+    label: 'Final Cut Pro XML',
+    ext: 'fcpxml',
+    mime: 'application/xml',
+    build: exportFCPXML,
+  },
   otio: { label: 'OpenTimelineIO', ext: 'otio', mime: 'application/json', build: exportOTIO },
   edl: { label: 'CMX 3600 EDL', ext: 'edl', mime: 'text/plain', build: exportEDL },
   resolve: {
