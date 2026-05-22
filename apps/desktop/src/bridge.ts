@@ -32,3 +32,18 @@ export async function computePeaks(path: string, targetBins = 2048): Promise<Flo
   const peaks = await invoke<number[]>('compute_peaks', { path, targetBins });
   return Float32Array.from(peaks);
 }
+
+export interface ExportRequest {
+  args: string[];
+  expectedDurationS: number;
+  jobId: string;
+}
+
+export interface ExportResult {
+  jobId: string;
+  stderrTail: string;
+}
+
+export async function runExportCut(request: ExportRequest): Promise<ExportResult> {
+  return await invoke<ExportResult>('export_cut', { request });
+}

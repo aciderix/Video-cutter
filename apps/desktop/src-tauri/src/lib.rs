@@ -1,5 +1,6 @@
 mod commands;
 mod error;
+mod export;
 mod ffmpeg;
 mod media;
 mod peaks;
@@ -24,6 +25,7 @@ pub fn run() {
             commands::analyze_media,
             commands::detect_silences,
             commands::compute_peaks,
+            export::export_cut,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

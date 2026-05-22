@@ -19,6 +19,7 @@ import {
 import { useStore } from './store.ts';
 import { pickMediaFiles, analyzeMedia, runSilenceDetection, computePeaks } from './bridge.ts';
 import { MediaPlayer, type MediaPlayerHandle } from './MediaPlayer.tsx';
+import { ExportPanel } from './ExportPanel.tsx';
 import { useShortcuts } from './shortcuts.ts';
 
 let idCounter = 0;
@@ -196,7 +197,7 @@ function Header({
         <Button variant="ghost" size="sm" onClick={onRedo} disabled={!canRedo}>
           Redo
         </Button>
-        <span className="ml-3 text-xs text-zinc-500">v0.0.3 — Phase 2 editor</span>
+        <span className="ml-3 text-xs text-zinc-500">v0.0.4 — Phase 3 export</span>
       </div>
     </header>
   );
@@ -285,6 +286,7 @@ function SourceView({
           onRegionClick={onRegionToggle}
         />
       </div>
+      <ExportPanel source={source} regions={regions} projectName={source.name} />
       <RegionsList
         regions={regions}
         currentTime={currentTime}

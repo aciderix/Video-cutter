@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaSource, Region } from '@quietcut/core';
-import { exportEDL, exportFCPXML, exportOTIO, exportResolveMarkers } from './index.ts';
+import {
+  buildFFmpegConcatList,
+  buildFFmpegSegmentCommands,
+  buildFilterComplexExport,
+  exportEDL,
+  exportFCPXML,
+  exportOTIO,
+  exportResolveMarkers,
+} from './index.ts';
 
 const source: MediaSource = {
   id: 'src1',
@@ -52,5 +60,35 @@ describe('exporters', () => {
     const dataLines = tsv.trim().split('\n').slice(1);
     expect(dataLines).toHaveLength(2);
     expect(dataLines[0]).toContain('Silence 1');
+  });
+});
+
+describe('FFmpeg builders', () => {
+  it('builds a filter_complex re-encode command for kept regions', () => {
+    const out = buildFilterComplexExport(ctx, { outputPath: '/tmp/out.mp4' });
+    expect(out.segmentCount).toBe(3);
+    expect(out.outputDurationS).toBe(8);
+    const i = out.args.indexOf('-filter_complex');
+    expect(i).toBeGreaterThan(0);
+    const fc = out.args[i + 1]!;
+    expect(fc).toContain('[0:v]trim=start=0.000000:end=2.000000');
+    expect(fc).toContain('concat=n=3:v=1:a=1');
+    expect(out.args).toContain('libx264');
+    expect(out.args).toContain('aac');
+    expect(out.args[out.args.length - 1]).toBe('/tmp/out.mp4');
+  });
+
+  it('builds per-segment commands and a concat list', () => {
+    const cmds = buildFFmpegSegmentCommands(
+      { ...ctx, regions },
+      { streamCopy: true, outDir: '/tmp', basename: 'clip', extension: '.mp4' },
+    );
+    expect(cmds).toHaveLength(3);
+    expect(cmds[0]?.outputPath).toBe('/tmp/clip_001.mp4');
+    expect(cmds[0]?.args).toContain('-c');
+    expect(cmds[0]?.args).toContain('copy');
+    const list = buildFFmpegConcatList(cmds.map((c) => c.outputPath));
+    expect(list).toContain("file '/tmp/clip_001.mp4'");
+    expect(list.trim().split('\n')).toHaveLength(3);
   });
 });
