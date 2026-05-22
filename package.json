@@ -1,0 +1,35 @@
+{
+  "name": "quietcut",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Ultra-fast, open-source silence remover for video and audio. Desktop + mobile.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aciderix/video-cutter.git"
+  },
+  "packageManager": "pnpm@9.15.9",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
+    "desktop:dev": "pnpm --filter @quietcut/desktop dev",
+    "desktop:build": "pnpm --filter @quietcut/desktop build",
+    "mobile:dev": "pnpm --filter @quietcut/mobile dev",
+    "mobile:build": "pnpm --filter @quietcut/mobile build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3"
+  }
+}
