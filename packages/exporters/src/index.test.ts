@@ -11,6 +11,13 @@ import {
   exportOTIO,
   exportResolveMarkers,
 } from './index.ts';
+import {
+  edlFcmLine,
+  isDropFrame,
+  secondsToDropFrameTimecode,
+  secondsToTimecode,
+  toFileUri,
+} from './types.ts';
 
 const source: MediaSource = {
   id: 'src1',
@@ -121,5 +128,77 @@ describe('FFmpeg builders', () => {
   it('has a sensible filter_complex threshold', () => {
     expect(FILTER_COMPLEX_SEGMENT_THRESHOLD).toBeGreaterThan(10);
     expect(FILTER_COMPLEX_SEGMENT_THRESHOLD).toBeLessThan(500);
+  });
+});
+
+describe('timecode helpers', () => {
+  it('flags drop-frame rates', () => {
+    expect(isDropFrame(29.97)).toBe(true);
+    expect(isDropFrame(59.94)).toBe(true);
+    expect(isDropFrame(30)).toBe(false);
+    expect(isDropFrame(24)).toBe(false);
+    expect(isDropFrame(23.976)).toBe(false);
+  });
+
+  it('emits non-drop timecodes at integer rates', () => {
+    expect(secondsToTimecode(0, 24)).toBe('00:00:00:00');
+    expect(secondsToTimecode(1.5, 30)).toBe('00:00:01:15');
+    expect(secondsToTimecode(3600, 24)).toBe('01:00:00:00');
+  });
+
+  it('emits drop-frame timecodes with ;', () => {
+    // SMPTE 12M: 60 real-time seconds = frame 1798, which displays as
+    // 00:00:59;28 in DF (the drops have not yet caught up).
+    expect(secondsToDropFrameTimecode(60, 29.97)).toBe('00:00:59;28');
+    // 1 hour of 29.97 wall-clock is 107892 frames = "01:00:00;00" in DF.
+    expect(secondsToDropFrameTimecode(3600, 29.97)).toBe('01:00:00;00');
+  });
+
+  it('EDL FCM line picks drop vs non-drop', () => {
+    expect(edlFcmLine(29.97)).toBe('FCM: DROP FRAME');
+    expect(edlFcmLine(30)).toBe('FCM: NON-DROP FRAME');
+    expect(edlFcmLine(23.976)).toBe('FCM: NON-DROP FRAME');
+  });
+
+  it('percent-encodes file URIs', () => {
+    expect(toFileUri('/tmp/clip with space.mp4')).toBe('file:///tmp/clip%20with%20space.mp4');
+    expect(toFileUri('/tmp/clí?p.mp4')).toBe('file:///tmp/cl%C3%AD%3Fp.mp4');
+    expect(toFileUri('C:\\Users\\Test\\clip.mp4')).toBe('file:///C%3A/Users/Test/clip.mp4');
+  });
+});
+
+describe('FCPXML on NTSC rates', () => {
+  const ntscSource = {
+    ...source,
+    videoStream: { width: 1920, height: 1080, frameRate: 29.97, codec: 'h264' },
+  };
+
+  it('declares DF tcFormat and rational 30000-denominator times', () => {
+    const xml = exportFCPXML({ source: ntscSource, regions, projectName: 'NTSC' });
+    expect(xml).toContain('frameDuration="1001/30000s"');
+    expect(xml).toContain('tcFormat="DF"');
+    expect(xml).toMatch(/duration="\d+\/30000s"/);
+  });
+});
+
+describe('EDL on NTSC rates', () => {
+  it('uses DROP FRAME FCM and drop-frame timecodes', () => {
+    const ntscSource = {
+      ...source,
+      videoStream: { width: 1920, height: 1080, frameRate: 29.97, codec: 'h264' },
+    };
+    const edl = exportEDL({ source: ntscSource, regions, projectName: 'NTSC' });
+    expect(edl).toContain('FCM: DROP FRAME');
+    expect(edl).toMatch(/\d{2}:\d{2}:\d{2};\d{2}/);
+  });
+});
+
+describe('OTIO deep clone', () => {
+  it('does not share media_reference across V1 and A1', () => {
+    const json = JSON.parse(exportOTIO(ctx));
+    const v1 = json.tracks.children[0].children[0];
+    const a1 = json.tracks.children[1].children[0];
+    expect(v1).not.toBe(a1);
+    expect(v1.media_reference).not.toBe(a1.media_reference);
   });
 });

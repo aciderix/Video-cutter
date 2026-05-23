@@ -36,12 +36,20 @@ pub struct MediaSource {
     pub audio_stream: Option<AudioStreamInfo>,
 }
 
+/// Mirror of the TS SilenceDetectionSettings. The Rust backend only uses
+/// `threshold_db` and `min_silence_duration_ms` (the two FFmpeg
+/// `silencedetect=noise:d` parameters). `padding_ms` and
+/// `min_keep_duration_ms` are post-processing knobs applied JS-side by
+/// `buildRegionsFromSilences`; they're kept here so a single TS-typed
+/// settings object can be passed through `invoke` without re-mapping.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SilenceDetectionSettings {
     pub threshold_db: f64,
     pub min_silence_duration_ms: u32,
+    #[allow(dead_code)]
     pub padding_ms: u32,
+    #[allow(dead_code)]
     pub min_keep_duration_ms: u32,
 }
 

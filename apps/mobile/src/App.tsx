@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Slider } from '@quietcut/ui';
 import { WaveformTimeline } from '@quietcut/timeline';
 import {
@@ -43,6 +43,13 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const samplesRef = useRef<Float32Array | null>(null);
   const sampleRateRef = useRef<number>(48_000);
+
+  // Revoke any leftover object URL on unmount.
+  useEffect(() => {
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [objectUrl]);
 
   const analyze = useCallback(
     async (file: File) => {

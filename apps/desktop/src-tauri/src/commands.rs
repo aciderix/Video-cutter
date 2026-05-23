@@ -10,6 +10,11 @@ use std::path::Path;
 use tokio::process::Command;
 
 #[tauri::command]
+pub fn path_exists(path: String) -> bool {
+    std::path::Path::new(&path).exists()
+}
+
+#[tauri::command]
 pub async fn analyze_media(path: String) -> AppResult<MediaSource> {
     let p = Path::new(&path);
     if !p.exists() {
@@ -136,10 +141,15 @@ fn no_audio_stream(stderr: &str) -> bool {
 }
 
 #[tauri::command]
-pub async fn compute_peaks(path: String, target_bins: u32) -> AppResult<Vec<f32>> {
+pub async fn compute_peaks(
+    path: String,
+    target_bins: u32,
+    expected_duration_s: Option<f64>,
+) -> AppResult<Vec<f32>> {
     let bins = target_bins.max(64).min(8192) as usize;
+    let dur = expected_duration_s.unwrap_or(0.0);
     let path_clone = path.clone();
-    tokio::task::spawn_blocking(move || extract_peaks(&path_clone, bins))
+    tokio::task::spawn_blocking(move || extract_peaks(&path_clone, bins, dur))
         .await
         .map_err(|e| AppError::Decode(format!("join: {e}")))?
 }

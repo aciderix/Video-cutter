@@ -1,6 +1,6 @@
 import { keptRegions } from '@quietcut/core';
 import type { ExportContext } from './types.ts';
-import { secondsToTimecode } from './types.ts';
+import { edlFcmLine, secondsToTimecode } from './types.ts';
 
 /**
  * CMX 3600 EDL — the universal lingua franca of NLEs.
@@ -15,7 +15,7 @@ export function exportEDL(ctx: ExportContext): string {
   const lines: string[] = [];
 
   lines.push(`TITLE: ${ctx.projectName}`);
-  lines.push('FCM: NON-DROP FRAME');
+  lines.push(edlFcmLine(fps));
   lines.push('');
 
   let recordCursor = 0;

@@ -28,6 +28,10 @@ interface QuietcutState {
   addSource: (source: MediaSource) => void;
   removeSource: (id: string) => void;
   selectSource: (id: string | null) => void;
+  /** Replace one source while keeping its id (used when relinking a missing
+   * file: the new MediaSource carries the new path/duration but inherits the
+   * old id so regionsBySource lookups keep working). */
+  relinkSource: (id: string, replacement: MediaSource) => void;
 
   // Regions / peaks
   setRegions: (regions: Region[], opts?: { history?: boolean }) => void;
@@ -111,6 +115,12 @@ export const useStore = create<QuietcutState>((set, get) => ({
   },
 
   selectSource: (id) => set({ currentSourceId: id, currentTime: 0 }),
+
+  relinkSource: (id, replacement) => {
+    const { sources } = get();
+    const next = sources.map((s) => (s.id === id ? { ...replacement, id } : s));
+    set({ sources: next });
+  },
 
   setRegions: (regions, opts = { history: true }) => {
     const { currentSourceId, regionsBySource, past } = get();

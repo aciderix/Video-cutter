@@ -29,8 +29,16 @@ export async function runSilenceDetection(
   return await invoke<RawSilenceInterval[]>('detect_silences', { path, settings });
 }
 
-export async function computePeaks(path: string, targetBins = 2048): Promise<Float32Array> {
-  const peaks = await invoke<number[]>('compute_peaks', { path, targetBins });
+export async function computePeaks(
+  path: string,
+  targetBins = 2048,
+  expectedDurationS?: number,
+): Promise<Float32Array> {
+  const peaks = await invoke<number[]>('compute_peaks', {
+    path,
+    targetBins,
+    expectedDurationS,
+  });
   return Float32Array.from(peaks);
 }
 
@@ -79,4 +87,22 @@ export async function writeFile(path: string, contents: string): Promise<void> {
 
 export async function readFile(path: string): Promise<string> {
   return await readTextFile(path);
+}
+
+export async function pathExists(path: string): Promise<boolean> {
+  return await invoke<boolean>('path_exists', { path });
+}
+
+export async function pickSingleMediaFile(): Promise<string | null> {
+  const result = await open({
+    multiple: false,
+    filters: [
+      {
+        name: 'Media',
+        extensions: ['mp4', 'mov', 'mkv', 'webm', 'avi', 'mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'],
+      },
+    ],
+  });
+  if (!result) return null;
+  return Array.isArray(result) ? (result[0] ?? null) : result;
 }

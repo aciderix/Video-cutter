@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
 import { Button, Slider } from '@quietcut/ui';
 import { WaveformTimeline } from '@quietcut/timeline';
@@ -22,11 +22,13 @@ import {
 import { useStore } from './store.ts';
 import {
   pickMediaFiles,
+  pickSingleMediaFile,
   analyzeMedia,
   runSilenceDetection,
   computePeaks,
   writeFile,
   readFile,
+  pathExists,
 } from './bridge.ts';
 import { MediaPlayer, type MediaPlayerHandle } from './MediaPlayer.tsx';
 import { ExportPanel } from './ExportPanel.tsx';
@@ -68,6 +70,22 @@ export function App() {
   // Snapshot of regions captured at the start of a boundary drag. Promoted
   // to the history stack on pointerup.
   const dragSnapshotRef = useRef<Region[] | null>(null);
+  const [missingPaths, setMissingPaths] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const result = new Set<string>();
+      for (const s of sources) {
+        const exists = await pathExists(s.path).catch(() => false);
+        if (!exists) result.add(s.id);
+      }
+      if (!cancelled) setMissingPaths(result);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sources]);
 
   const analyzeOne = useCallback(
     async (path: string, currentSettings: SilenceDetectionSettings): Promise<MediaSource> => {
@@ -75,7 +93,7 @@ export function App() {
       store.getState().addSource(src);
       const [silences, wavePeaks] = await Promise.all([
         runSilenceDetection(src.path, currentSettings),
-        computePeaks(src.path, 2048).catch(() => null),
+        computePeaks(src.path, 2048, src.duration).catch(() => null),
       ]);
       store
         .getState()
@@ -154,10 +172,40 @@ export function App() {
       const raw = await readFile(path);
       const project = parseProject(raw);
       store.getState().loadProject(project, path);
+      // Then re-fetch peaks + flag missing sources.
+      const missing: string[] = [];
+      for (const src of project.sources) {
+        if (await pathExists(src.path)) {
+          const peaks = await computePeaks(src.path, 2048, src.duration).catch(() => null);
+          if (peaks) store.getState().setPeaksFor(src.id, peaks);
+        } else {
+          missing.push(src.name);
+        }
+      }
+      if (missing.length > 0) {
+        setError(`Missing source files (use Relink in the sidebar): ${missing.join(', ')}`);
+      }
     } catch (e) {
       setError(`Failed to load project: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
+
+  const relinkSource = useCallback(
+    async (id: string) => {
+      const path = await pickSingleMediaFile();
+      if (!path) return;
+      try {
+        const replacement = await analyzeMedia(path);
+        store.getState().relinkSource(id, replacement);
+        const peaks = await computePeaks(path, 2048, replacement.duration).catch(() => null);
+        if (peaks) store.getState().setPeaksFor(id, peaks);
+        setError(null);
+      } catch (e) {
+        setError(`Relink failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    },
+    [store],
+  );
 
   const newProject = () => store.getState().resetProject();
 
@@ -246,10 +294,12 @@ export function App() {
         <Sidebar
           sources={sources}
           currentSourceId={currentSourceId}
+          missingPaths={missingPaths}
           settings={settings}
           batchProgress={batchProgress}
           onSelectSource={(id) => store.getState().selectSource(id)}
           onRemoveSource={(id) => store.getState().removeSource(id)}
+          onRelinkSource={relinkSource}
           onSettingsChange={onSettingsChange}
           onReanalyzeAll={reanalyzeAll}
           onAddFiles={openFiles}
@@ -540,10 +590,12 @@ function RegionsList({
 function Sidebar({
   sources,
   currentSourceId,
+  missingPaths,
   settings,
   batchProgress,
   onSelectSource,
   onRemoveSource,
+  onRelinkSource,
   onSettingsChange,
   onReanalyzeAll,
   onAddFiles,
@@ -551,10 +603,12 @@ function Sidebar({
 }: {
   sources: MediaSource[];
   currentSourceId: string | null;
+  missingPaths: Set<string>;
   settings: SilenceDetectionSettings;
   batchProgress: { index: number; total: number } | null;
   onSelectSource: (id: string) => void;
   onRemoveSource: (id: string) => void;
+  onRelinkSource: (id: string) => void;
   onSettingsChange: (s: SilenceDetectionSettings) => void;
   onReanalyzeAll: () => void;
   onAddFiles: () => void;
@@ -575,6 +629,7 @@ function Sidebar({
           <ul className="space-y-1">
             {sources.map((s) => {
               const active = s.id === currentSourceId;
+              const missing = missingPaths.has(s.id);
               return (
                 <li
                   key={s.id}
@@ -585,10 +640,21 @@ function Sidebar({
                   <button
                     className="truncate text-left flex-1 min-w-0"
                     onClick={() => onSelectSource(s.id)}
-                    title={s.path}
+                    title={missing ? `Missing: ${s.path}` : s.path}
                   >
-                    {s.name}
+                    <span className={missing ? 'text-rose-300' : ''}>
+                      {missing ? '⚠ ' : ''}
+                      {s.name}
+                    </span>
                   </button>
+                  {missing && (
+                    <button
+                      className="ml-2 text-xs text-amber-300 hover:text-amber-200"
+                      onClick={() => onRelinkSource(s.id)}
+                    >
+                      relink
+                    </button>
+                  )}
                   <button
                     className="ml-2 opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400"
                     onClick={() => onRemoveSource(s.id)}

@@ -26,6 +26,7 @@ pub fn run() {
             commands::analyze_media,
             commands::detect_silences,
             commands::compute_peaks,
+            commands::path_exists,
             export::export_cut,
             export::export_segmented,
             export::cancel_export,

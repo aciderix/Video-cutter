@@ -1,6 +1,6 @@
 import { keptRegions } from '@quietcut/core';
 import type { ExportContext } from './types.ts';
-import { escapeXml } from './types.ts';
+import { escapeXml, isDropFrame, toFileUri } from './types.ts';
 
 /**
  * FCPXML 1.10 — Final Cut Pro X format.
@@ -25,7 +25,7 @@ export function exportFCPXML(ctx: ExportContext): string {
     const start = formatTime(region.start, fps);
     const dur = formatTime(region.end - region.start, fps);
     recordCursor += region.end - region.start;
-    timeline += `          <asset-clip name="${escapeXml(ctx.source.name)} #${i + 1}" ref="${assetId}" offset="${offset}" start="${start}" duration="${dur}" tcFormat="NDF"/>\n`;
+    timeline += `          <asset-clip name="${escapeXml(ctx.source.name)} #${i + 1}" ref="${assetId}" offset="${offset}" start="${start}" duration="${dur}" tcFormat="${isDropFrame(fps) ? 'DF' : 'NDF'}"/>\n`;
   });
 
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -38,7 +38,7 @@ export function exportFCPXML(ctx: ExportContext): string {
   <library>
     <event name="${escapeXml(ctx.projectName)}">
       <project name="${escapeXml(ctx.projectName)}">
-        <sequence format="${formatId}" tcStart="0s" tcFormat="NDF">
+        <sequence format="${formatId}" tcStart="0s" tcFormat="${isDropFrame(fps) ? 'DF' : 'NDF'}">
           <spine>
 ${timeline}          </spine>
         </sequence>
@@ -57,15 +57,22 @@ function formatFrameDuration(fps: number): string {
 }
 
 function formatTime(seconds: number, fps: number): string {
-  const frames = Math.round(seconds * fps);
-  const fpsRound = Math.round(fps);
-  return `${frames}/${fpsRound}s`;
-}
-
-function toFileUri(path: string): string {
-  if (path.startsWith('file://')) return path;
-  if (/^[A-Za-z]:[\\/]/.test(path)) {
-    return 'file:///' + path.replace(/\\/g, '/');
+  // FCPXML "rational" time: use a denominator that matches the declared
+  // frameDuration so 29.97 / 23.976 sequences stay aligned. The numerator
+  // is then `seconds * denominator` rounded to the nearest integer.
+  if (Math.abs(fps - 23.976) < 0.01) {
+    const num = Math.round(seconds * 24000);
+    return `${num}/24000s`;
   }
-  return 'file://' + path;
+  if (Math.abs(fps - 29.97) < 0.01) {
+    const num = Math.round(seconds * 30000);
+    return `${num}/30000s`;
+  }
+  if (Math.abs(fps - 59.94) < 0.01) {
+    const num = Math.round(seconds * 60000);
+    return `${num}/60000s`;
+  }
+  const fpsRound = Math.round(fps);
+  const frames = Math.round(seconds * fpsRound);
+  return `${frames}/${fpsRound}s`;
 }

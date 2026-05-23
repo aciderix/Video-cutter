@@ -1,5 +1,6 @@
 import { keptRegions } from '@quietcut/core';
 import type { ExportContext } from './types.ts';
+import { toFileUri } from './types.ts';
 
 /**
  * OpenTimelineIO (OTIO) JSON — Pixar's open universal interchange format.
@@ -32,11 +33,14 @@ export function exportOTIO(ctx: ExportContext): string {
   ];
 
   if (ctx.source.hasAudio) {
+    // Deep clone so the two tracks share no nested references — protects
+    // downstream code that walks/mutates the tree from edits leaking
+    // between V1 and A1.
     tracks.push({
       OTIO_SCHEMA: 'Track.1',
       name: 'A1',
       kind: 'Audio',
-      children: clips.map((c) => ({ ...c })),
+      children: clips.map((c) => structuredClone(c)),
     });
   }
 
@@ -68,12 +72,4 @@ function rationalRange(start: number, duration: number, fps: number) {
     start_time: rationalTime(start, fps),
     duration: rationalTime(duration, fps),
   };
-}
-
-function toFileUri(path: string): string {
-  if (path.startsWith('file://')) return path;
-  if (/^[A-Za-z]:[\\/]/.test(path)) {
-    return 'file:///' + path.replace(/\\/g, '/');
-  }
-  return 'file://' + path;
 }
