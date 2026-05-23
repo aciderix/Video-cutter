@@ -65,6 +65,9 @@ export function App() {
   const [batchProgress, setBatchProgress] = useState<{ index: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const playerRef = useRef<MediaPlayerHandle>(null);
+  // Snapshot of regions captured at the start of a boundary drag. Promoted
+  // to the history stack on pointerup.
+  const dragSnapshotRef = useRef<Region[] | null>(null);
 
   const analyzeOne = useCallback(
     async (path: string, currentSettings: SilenceDetectionSettings): Promise<MediaSource> => {
@@ -168,14 +171,29 @@ export function App() {
 
   const onBoundaryDrag = useCallback(
     (id: string, side: 'start' | 'end', time: number) => {
-      store.getState().setRegions(moveBoundary(regions, id, side, time), { history: false });
+      const current = store.getState();
+      if (dragSnapshotRef.current === null && current.currentSourceId) {
+        dragSnapshotRef.current = current.regionsBySource[current.currentSourceId] ?? [];
+      }
+      const live = current.currentSourceId
+        ? (current.regionsBySource[current.currentSourceId] ?? [])
+        : [];
+      current.setRegions(moveBoundary(live, id, side, time), { history: false });
     },
-    [regions, store],
+    [store],
   );
 
   const onBoundaryRelease = useCallback(() => {
-    store.getState().setRegions([...regions]);
-  }, [regions, store]);
+    const snapshot = dragSnapshotRef.current;
+    dragSnapshotRef.current = null;
+    if (!snapshot) return;
+    const current = store.getState();
+    const sid = current.currentSourceId;
+    if (!sid) return;
+    const after = current.regionsBySource[sid] ?? [];
+    // Push the pre-drag snapshot to history without disturbing `after`.
+    current.pushHistorySnapshot(sid, snapshot);
+  }, [store]);
 
   const onRegionToggle = useCallback(
     (id: string) => store.getState().setRegions(toggleKept(regions, id)),
@@ -422,10 +440,7 @@ function SourceView({
         </div>
       </div>
       <MediaPlayer ref={playerRef} source={source} onTimeUpdate={onTimeUpdate} />
-      <div
-        className="rounded-lg border border-zinc-800 bg-zinc-900 p-2"
-        onMouseUp={onBoundaryRelease}
-      >
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
         <WaveformTimeline
           peaks={peaks}
           regions={regions}
@@ -433,6 +448,7 @@ function SourceView({
           currentTime={currentTime}
           onSeek={onSeek}
           onBoundaryDrag={onBoundaryDrag}
+          onBoundaryDragEnd={onBoundaryRelease}
           onRegionClick={onRegionToggle}
         />
       </div>

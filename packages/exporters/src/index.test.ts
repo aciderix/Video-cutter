@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaSource, Region } from '@quietcut/core';
 import {
+  FILTER_COMPLEX_SEGMENT_THRESHOLD,
   buildFFmpegConcatList,
   buildFFmpegSegmentCommands,
   buildFilterComplexExport,
+  buildSegmentedExport,
   exportEDL,
   exportFCPXML,
   exportOTIO,
@@ -90,5 +92,34 @@ describe('FFmpeg builders', () => {
     const list = buildFFmpegConcatList(cmds.map((c) => c.outputPath));
     expect(list).toContain("file '/tmp/clip_001.mp4'");
     expect(list.trim().split('\n')).toHaveLength(3);
+  });
+
+  it('builds a segmented export plan with concat list and tmp paths', () => {
+    const plan = buildSegmentedExport(ctx, {
+      outputPath: '/out/final.mp4',
+      tmpDir: '/tmp',
+      extension: '.mp4',
+      streamCopy: true,
+    });
+    expect(plan.segments).toHaveLength(3);
+    expect(plan.outputDurationS).toBe(8);
+    expect(plan.segments[0]?.tmpPath).toMatch(/qc_seg_00001\.mp4$/);
+    expect(plan.concatListContent.trim().split('\n')).toHaveLength(3);
+    expect(plan.concatArgs).toContain('-f');
+    expect(plan.concatArgs).toContain('concat');
+    expect(plan.concatArgs[plan.concatArgs.length - 1]).toBe('/out/final.mp4');
+  });
+
+  it('escapes single quotes in concat list paths', () => {
+    const plan = buildSegmentedExport(
+      { ...ctx, source: { ...source, path: "/tmp/dir with 'quote'/clip.mp4" } },
+      { outputPath: '/out/o.mp4', tmpDir: "/tmp/won't", extension: '.mp4' },
+    );
+    expect(plan.concatListContent).toContain("\\'");
+  });
+
+  it('has a sensible filter_complex threshold', () => {
+    expect(FILTER_COMPLEX_SEGMENT_THRESHOLD).toBeGreaterThan(10);
+    expect(FILTER_COMPLEX_SEGMENT_THRESHOLD).toBeLessThan(500);
   });
 });

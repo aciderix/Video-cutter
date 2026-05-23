@@ -108,16 +108,31 @@ pub async fn detect_silences(
         .output()
         .await?;
 
+    let stderr = String::from_utf8_lossy(&output.stderr);
+
     if !output.status.success() {
+        // Video-only sources fall through here because `-af` requires audio.
+        // FFmpeg's stderr is the source of truth — match the no-audio cases
+        // and return an empty interval list instead of bubbling up a generic
+        // failure that the UI cannot interpret.
+        if no_audio_stream(&stderr) {
+            return Ok(Vec::new());
+        }
         return Err(AppError::FfmpegFailed(
             output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stderr).into_owned(),
+            stderr.into_owned(),
         ));
     }
 
-    let stderr = String::from_utf8_lossy(&output.stderr);
     let total_duration = parse_total_duration(&stderr).unwrap_or(f64::INFINITY);
     Ok(parse_silencedetect(&stderr, total_duration))
+}
+
+fn no_audio_stream(stderr: &str) -> bool {
+    stderr.contains("does not contain any stream")
+        || stderr.contains("Stream specifier 'a' in filtergraph description")
+        || stderr.contains("Output file does not contain any stream")
+        || (stderr.contains("Stream specifier") && stderr.contains("matches no streams"))
 }
 
 #[tauri::command]

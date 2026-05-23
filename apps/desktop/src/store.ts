@@ -32,6 +32,9 @@ interface QuietcutState {
   // Regions / peaks
   setRegions: (regions: Region[], opts?: { history?: boolean }) => void;
   setRegionsFor: (sourceId: string, regions: Region[]) => void;
+  /** Push an explicit snapshot onto the history stack. Used to commit
+   * boundary drags whose intermediate moves were done with history:false. */
+  pushHistorySnapshot: (sourceId: string, regions: Region[]) => void;
   setPeaks: (peaks: Float32Array | null) => void;
   setPeaksFor: (sourceId: string, peaks: Float32Array) => void;
 
@@ -112,8 +115,15 @@ export const useStore = create<QuietcutState>((set, get) => ({
   setRegions: (regions, opts = { history: true }) => {
     const { currentSourceId, regionsBySource, past } = get();
     if (!currentSourceId) return;
+    const prev = regionsBySource[currentSourceId] ?? [];
+    if (prev === regions) return; // reference-equality short-circuit
     if (opts.history) {
-      const prev = regionsBySource[currentSourceId] ?? [];
+      // Only snapshot if the regions actually changed by value.
+      const changed = prev.length !== regions.length || prev.some((r, i) => r !== regions[i]);
+      if (!changed) {
+        set({ regionsBySource: { ...regionsBySource, [currentSourceId]: regions } });
+        return;
+      }
       const newPast = [...past, { sourceId: currentSourceId, regions: prev }].slice(-HISTORY_LIMIT);
       set({
         regionsBySource: { ...regionsBySource, [currentSourceId]: regions },
@@ -127,6 +137,16 @@ export const useStore = create<QuietcutState>((set, get) => ({
 
   setRegionsFor: (sourceId, regions) => {
     set({ regionsBySource: { ...get().regionsBySource, [sourceId]: regions } });
+  },
+
+  pushHistorySnapshot: (sourceId, regions) => {
+    const { past, regionsBySource } = get();
+    const current = regionsBySource[sourceId] ?? [];
+    if (current === regions) return;
+    const changed = current.length !== regions.length || current.some((r, i) => r !== regions[i]);
+    if (!changed) return;
+    const newPast = [...past, { sourceId, regions }].slice(-HISTORY_LIMIT);
+    set({ past: newPast, future: [] });
   },
 
   setPeaks: (peaks) => {
@@ -146,28 +166,34 @@ export const useStore = create<QuietcutState>((set, get) => ({
   setDetectionSettings: (detectionSettings) => set({ detectionSettings }),
 
   undo: () => {
-    const { past, regionsBySource, future } = get();
-    const prev = past[past.length - 1];
-    if (!prev) return;
-    const currentRegions = regionsBySource[prev.sourceId] ?? [];
+    const { past, regionsBySource, future, currentSourceId } = get();
+    if (!currentSourceId) return;
+    // Walk back the most recent snapshot for the *current* source.
+    let i = past.length - 1;
+    while (i >= 0 && past[i]!.sourceId !== currentSourceId) i--;
+    if (i < 0) return;
+    const prev = past[i]!;
+    const currentRegions = regionsBySource[currentSourceId] ?? [];
+    const newPast = past.filter((_, j) => j !== i);
     set({
-      regionsBySource: { ...regionsBySource, [prev.sourceId]: prev.regions },
-      past: past.slice(0, -1),
-      future: [{ sourceId: prev.sourceId, regions: currentRegions }, ...future],
-      currentSourceId: prev.sourceId,
+      regionsBySource: { ...regionsBySource, [currentSourceId]: prev.regions },
+      past: newPast,
+      future: [{ sourceId: currentSourceId, regions: currentRegions }, ...future],
     });
   },
 
   redo: () => {
-    const { future, regionsBySource, past } = get();
-    const next = future[0];
-    if (!next) return;
-    const currentRegions = regionsBySource[next.sourceId] ?? [];
+    const { future, regionsBySource, past, currentSourceId } = get();
+    if (!currentSourceId) return;
+    const i = future.findIndex((snap) => snap.sourceId === currentSourceId);
+    if (i < 0) return;
+    const next = future[i]!;
+    const currentRegions = regionsBySource[currentSourceId] ?? [];
+    const newFuture = future.filter((_, j) => j !== i);
     set({
-      regionsBySource: { ...regionsBySource, [next.sourceId]: next.regions },
-      future: future.slice(1),
-      past: [...past, { sourceId: next.sourceId, regions: currentRegions }],
-      currentSourceId: next.sourceId,
+      regionsBySource: { ...regionsBySource, [currentSourceId]: next.regions },
+      future: newFuture,
+      past: [...past, { sourceId: currentSourceId, regions: currentRegions }],
     });
   },
 

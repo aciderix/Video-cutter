@@ -5,13 +5,16 @@ import { Button } from '@quietcut/ui';
 import type { MediaSource, Region } from '@quietcut/core';
 import { LOUDNESS_PRESETS, loudnessFilterArg } from '@quietcut/core';
 import {
+  FILTER_COMPLEX_SEGMENT_THRESHOLD,
   buildFilterComplexExport,
+  buildSegmentedExport,
   exportEDL,
   exportFCPXML,
   exportOTIO,
   exportResolveMarkers,
 } from '@quietcut/exporters';
-import { runExportCut, writeFile } from './bridge.ts';
+import { keptRegions } from '@quietcut/core';
+import { cancelExport, runExportCut, runExportSegmented, tempDir, writeFile } from './bridge.ts';
 
 type NleFormat = 'fcpxml' | 'otio' | 'edl' | 'resolve';
 
@@ -55,6 +58,7 @@ export function ExportPanel({ source, regions, projectName }: Props) {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loudnessId, setLoudnessId] = useState<string>('none');
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsub = listen<{
@@ -86,29 +90,62 @@ export function ExportPanel({ source, regions, projectName }: Props) {
 
     setBusy(true);
     setProgress({ percent: 0, outTimeMs: 0, speed: null });
+    const jobId = `export-${++exportCounter}`;
+    setActiveJobId(jobId);
     try {
       const preset = LOUDNESS_PRESETS.find((p) => p.id === loudnessId);
       const extraArgs = ['-preset', 'veryfast', '-crf', '20'];
       if (preset) extraArgs.push('-af', loudnessFilterArg(preset));
-      const plan = buildFilterComplexExport(
-        { source, regions, projectName },
-        { outputPath, extraArgs },
-      );
-      const jobId = `export-${++exportCounter}`;
-      const result = await runExportCut({
-        args: plan.args,
-        expectedDurationS: plan.outputDurationS,
-        jobId,
-      });
-      setStatus(
-        `Wrote ${outputPath} (${plan.segmentCount} segments, ${plan.outputDurationS.toFixed(2)}s)`,
-      );
-      void result;
+
+      const segmentCount = keptRegions(regions).length;
+      if (segmentCount > FILTER_COMPLEX_SEGMENT_THRESHOLD) {
+        // Per-segment cut + concat-demux: scales to thousands of regions.
+        const tmp = await tempDir();
+        const plan = buildSegmentedExport(
+          { source, regions, projectName },
+          { outputPath, tmpDir: tmp, extension: extOf(outputPath), streamCopy: false },
+        );
+        await runExportSegmented({
+          segments: plan.segments.map((s) => s.args),
+          concatArgs: plan.concatArgs,
+          concatListPath: plan.concatListPath,
+          concatListContent: plan.concatListContent,
+          tmpPaths: plan.segments.map((s) => s.tmpPath),
+          expectedDurationS: plan.outputDurationS,
+          jobId,
+        });
+        setStatus(`Wrote ${outputPath} (${plan.segments.length} segments via concat demuxer)`);
+      } else {
+        // Single-pass filter_complex: fastest at small N.
+        const plan = buildFilterComplexExport(
+          { source, regions, projectName },
+          { outputPath, extraArgs },
+        );
+        await runExportCut({
+          args: plan.args,
+          expectedDurationS: plan.outputDurationS,
+          jobId,
+        });
+        setStatus(
+          `Wrote ${outputPath} (${plan.segmentCount} segments, ${plan.outputDurationS.toFixed(2)}s)`,
+        );
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+      setActiveJobId(null);
     }
+  };
+
+  const cancel = async () => {
+    if (!activeJobId) return;
+    await cancelExport(activeJobId).catch(() => {});
+  };
+
+  const extOf = (p: string): string => {
+    const m = p.match(/(\.[^./\\]+)$/);
+    return m ? m[1]! : '.mp4';
   };
 
   const exportNle = async (format: NleFormat) => {
@@ -141,9 +178,16 @@ export function ExportPanel({ source, regions, projectName }: Props) {
             {keptCount} kept · {regions.filter((r) => !r.kept).length} cuts
           </p>
         </div>
-        <Button onClick={exportSingleFile} disabled={busy || keptCount === 0}>
-          {busy ? `Exporting… ${progress?.percent.toFixed(0) ?? 0}%` : 'Export single MP4'}
-        </Button>
+        <div className="flex gap-2">
+          {busy && activeJobId && (
+            <Button variant="danger" size="sm" onClick={cancel}>
+              Cancel
+            </Button>
+          )}
+          <Button onClick={exportSingleFile} disabled={busy || keptCount === 0}>
+            {busy ? `Exporting… ${progress?.percent.toFixed(0) ?? 0}%` : 'Export single MP4'}
+          </Button>
+        </div>
       </div>
       <div className="flex items-center gap-2 text-xs text-zinc-400">
         <label htmlFor="loudness-select">Loudness:</label>

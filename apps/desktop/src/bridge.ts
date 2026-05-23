@@ -49,6 +49,30 @@ export async function runExportCut(request: ExportRequest): Promise<ExportResult
   return await invoke<ExportResult>('export_cut', { request });
 }
 
+export interface SegmentedExportRequest {
+  segments: string[][];
+  concatArgs: string[];
+  concatListPath: string;
+  concatListContent: string;
+  tmpPaths: string[];
+  expectedDurationS: number;
+  jobId: string;
+  timeoutSeconds?: number;
+}
+
+export async function runExportSegmented(request: SegmentedExportRequest): Promise<ExportResult> {
+  return await invoke<ExportResult>('export_segmented', { request });
+}
+
+export async function cancelExport(jobId: string): Promise<boolean> {
+  return await invoke<boolean>('cancel_export', { jobId });
+}
+
+export async function tempDir(): Promise<string> {
+  const path = await import('@tauri-apps/api/path');
+  return await path.tempDir();
+}
+
 export async function writeFile(path: string, contents: string): Promise<void> {
   await writeTextFile(path, contents);
 }

@@ -9,11 +9,12 @@ export interface WaveformTimelineProps {
   currentTime: Seconds;
   onSeek?: (time: Seconds) => void;
   onBoundaryDrag?: (regionId: string, side: 'start' | 'end', time: Seconds) => void;
+  onBoundaryDragEnd?: () => void;
   onRegionClick?: (regionId: string) => void;
   height?: number;
 }
 
-const HANDLE_PX = 6;
+const HANDLE_PX = 8;
 
 export function WaveformTimeline({
   peaks,
@@ -22,13 +23,21 @@ export function WaveformTimeline({
   currentTime,
   onSeek,
   onBoundaryDrag,
+  onBoundaryDragEnd,
   onRegionClick,
   height = 120,
 }: WaveformTimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const overlayRef = useRef<HTMLCanvasElement>(null);
   const [hoverCursor, setHoverCursor] = useState<'pointer' | 'col-resize'>('pointer');
-  const dragRef = useRef<{ regionId: string; side: 'start' | 'end' } | null>(null);
+  const dragRef = useRef<{
+    regionId: string;
+    side: 'start' | 'end';
+    didMove: boolean;
+  } | null>(null);
+  const justDraggedRef = useRef(false);
 
+  // --- Static layer: waveform peaks + region tinting + boundary handles ---
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -73,6 +82,22 @@ export function WaveformTimeline({
       }
       ctx.stroke();
     }
+  }, [peaks, regions, duration, height]);
+
+  // --- Overlay layer: playhead only. Re-renders every currentTime tick. ---
+  useEffect(() => {
+    const overlay = overlayRef.current;
+    if (!overlay) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cssWidth = overlay.clientWidth;
+    const cssHeight = overlay.clientHeight;
+    overlay.width = Math.max(1, Math.floor(cssWidth * dpr));
+    overlay.height = Math.max(1, Math.floor(cssHeight * dpr));
+
+    const ctx = overlay.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
 
     if (duration > 0) {
       const px = (currentTime / duration) * cssWidth;
@@ -83,20 +108,21 @@ export function WaveformTimeline({
       ctx.lineTo(px, cssHeight);
       ctx.stroke();
     }
-  }, [peaks, regions, duration, currentTime, height]);
+  }, [currentTime, duration]);
 
-  const pxToTime = (e: React.MouseEvent<HTMLCanvasElement>): { time: Seconds; ratio: number } => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const ratio = (e.clientX - rect.left) / rect.width;
-    return { time: Math.max(0, Math.min(duration, ratio * duration)), ratio };
+  const pxToTimeFromClient = (clientX: number): Seconds => {
+    const canvas = canvasRef.current;
+    if (!canvas || duration <= 0) return 0;
+    const rect = canvas.getBoundingClientRect();
+    const ratio = (clientX - rect.left) / rect.width;
+    return Math.max(0, Math.min(duration, ratio * duration));
   };
 
-  const hitTestBoundary = (
-    e: React.MouseEvent<HTMLCanvasElement>,
-  ): { regionId: string; side: 'start' | 'end' } | null => {
-    if (duration <= 0) return null;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left;
+  const hitTestBoundary = (clientX: number): { regionId: string; side: 'start' | 'end' } | null => {
+    const canvas = canvasRef.current;
+    if (!canvas || duration <= 0) return null;
+    const rect = canvas.getBoundingClientRect();
+    const px = clientX - rect.left;
     const pxPerSec = rect.width / duration;
     for (let i = 0; i < regions.length; i++) {
       const r = regions[i]!;
@@ -110,34 +136,56 @@ export function WaveformTimeline({
     return null;
   };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const hit = hitTestBoundary(e);
+  // Global pointer listeners while dragging, so the user can release outside
+  // the canvas (or even the window) without losing the commit.
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!dragRef.current || !onBoundaryDrag) return;
+      dragRef.current.didMove = true;
+      onBoundaryDrag(dragRef.current.regionId, dragRef.current.side, pxToTimeFromClient(e.clientX));
+    };
+    const finish = () => {
+      if (!dragRef.current) return;
+      const didMove = dragRef.current.didMove;
+      dragRef.current = null;
+      if (didMove) {
+        justDraggedRef.current = true;
+        onBoundaryDragEnd?.();
+      }
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+    window.addEventListener('blur', finish);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      window.removeEventListener('blur', finish);
+    };
+  }, [onBoundaryDrag, onBoundaryDragEnd, duration, regions]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const hit = hitTestBoundary(e.clientX);
     if (hit && onBoundaryDrag) {
-      dragRef.current = hit;
+      dragRef.current = { ...hit, didMove: false };
+      (e.currentTarget as HTMLCanvasElement).setPointerCapture?.(e.pointerId);
       e.preventDefault();
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (dragRef.current && onBoundaryDrag) {
-      const { time } = pxToTime(e);
-      onBoundaryDrag(dragRef.current.regionId, dragRef.current.side, time);
-      return;
-    }
-    setHoverCursor(hitTestBoundary(e) ? 'col-resize' : 'pointer');
-  };
-
-  const handleMouseUp = () => {
-    dragRef.current = null;
+    if (dragRef.current) return;
+    setHoverCursor(hitTestBoundary(e.clientX) ? 'col-resize' : 'pointer');
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (dragRef.current) {
-      dragRef.current = null;
+    if (justDraggedRef.current) {
+      justDraggedRef.current = false;
       return;
     }
-    if (hitTestBoundary(e)) return;
-    const { time } = pxToTime(e);
+    if (hitTestBoundary(e.clientX)) return;
+    const time = pxToTimeFromClient(e.clientX);
     if (e.detail === 2 && onRegionClick && duration > 0) {
       const region = regions.find((r) => time >= r.start && time <= r.end);
       if (region) {
@@ -148,21 +196,51 @@ export function WaveformTimeline({
     onSeek?.(time);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (!onSeek || duration <= 0) return;
+    const step = e.shiftKey ? duration / 20 : duration / 200;
+    if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      onSeek(Math.max(0, currentTime - step));
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      onSeek(Math.min(duration, currentTime + step));
+    } else if (e.code === 'Home') {
+      e.preventDefault();
+      onSeek(0);
+    } else if (e.code === 'End') {
+      e.preventDefault();
+      onSeek(duration);
+    }
+  };
+
   return (
-    <canvas
-      ref={canvasRef}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onClick={handleClick}
-      role="slider"
-      tabIndex={0}
-      aria-label="Waveform timeline. Click to seek. Double-click to toggle a region. Drag boundaries to resize."
-      aria-valuemin={0}
-      aria-valuemax={duration}
-      aria-valuenow={currentTime}
-      style={{ width: '100%', height, display: 'block', cursor: hoverCursor }}
-    />
+    <div style={{ position: 'relative', width: '100%', height }}>
+      <canvas
+        ref={canvasRef}
+        onPointerDown={handlePointerDown}
+        onMouseMove={handleMouseMove}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        role="slider"
+        tabIndex={0}
+        aria-label="Waveform timeline. Click to seek, double-click a region to toggle, drag boundaries to resize, arrow keys to scrub."
+        aria-valuemin={0}
+        aria-valuemax={duration}
+        aria-valuenow={currentTime}
+        style={{ width: '100%', height, display: 'block', cursor: hoverCursor }}
+      />
+      <canvas
+        ref={overlayRef}
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height,
+          pointerEvents: 'none',
+        }}
+      />
+    </div>
   );
 }

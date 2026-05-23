@@ -13,6 +13,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(export::CancelRegistry::default())
         .setup(|app| {
             #[cfg(debug_assertions)]
             {
@@ -26,6 +27,8 @@ pub fn run() {
             commands::detect_silences,
             commands::compute_peaks,
             export::export_cut,
+            export::export_segmented,
+            export::cancel_export,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
