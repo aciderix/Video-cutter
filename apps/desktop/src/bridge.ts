@@ -4,6 +4,41 @@ import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
 import type { MediaSource, SilenceDetectionSettings } from '@quietcut/core';
 import type { RawSilenceInterval } from '@quietcut/core';
 
+export type AppErrorKind =
+  | 'ffmpegMissing'
+  | 'ffmpegRun'
+  | 'ffmpegFailed'
+  | 'parseError'
+  | 'unsupportedMedia'
+  | 'decode';
+
+export interface AppError {
+  kind: AppErrorKind;
+  message: string;
+  details: string;
+  code?: number;
+}
+
+export function isAppError(value: unknown): value is AppError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'kind' in value &&
+    typeof (value as { kind: unknown }).kind === 'string'
+  );
+}
+
+export function formatBridgeError(value: unknown): string {
+  if (isAppError(value)) {
+    if (value.details && value.details !== value.message) {
+      return `${value.message}\n${value.details}`;
+    }
+    return value.message;
+  }
+  if (value instanceof Error) return value.message;
+  return String(value);
+}
+
 export async function pickMediaFiles(): Promise<string[]> {
   const result = await open({
     multiple: true,

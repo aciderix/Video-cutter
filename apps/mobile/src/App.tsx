@@ -6,8 +6,8 @@ import {
   buildRegionsFromSilences,
   outputDuration,
   samplesToPeaks,
-  silenceFromSamples,
   toggleKept,
+  vadFromSamples,
   type MediaSource,
   type Region,
   type SilenceDetectionSettings,
@@ -87,7 +87,7 @@ export function App() {
           },
         };
 
-        const intervals = silenceFromSamples(mono, audioBuffer.sampleRate, settings);
+        const intervals = vadFromSamples(mono, audioBuffer.sampleRate, settings);
         const regs = buildRegionsFromSilences(audioBuffer.duration, intervals, settings);
         const wave = samplesToPeaks(mono, 1024);
 
@@ -113,7 +113,7 @@ export function App() {
     const samples = samplesRef.current;
     const sr = sampleRateRef.current;
     if (!samples || !source) return;
-    const intervals = silenceFromSamples(samples, sr, settings);
+    const intervals = vadFromSamples(samples, sr, settings);
     setRegions(buildRegionsFromSilences(source.duration, intervals, settings));
   }, [settings, source]);
 

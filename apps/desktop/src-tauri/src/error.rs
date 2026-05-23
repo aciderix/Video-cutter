@@ -21,9 +21,29 @@ pub enum AppError {
     Decode(String),
 }
 
+/// Serialized shape that crosses the Tauri bridge as a JS object instead of a
+/// flat string. The frontend can `switch (err.kind)` on the discriminant and
+/// surface different UI (e.g. a "Install FFmpeg" prompt for `ffmpegMissing`,
+/// a stderr-tail viewer for `ffmpegFailed`).
 impl Serialize for AppError {
     fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&self.to_string())
+        use serde::ser::SerializeMap;
+        let mut map = s.serialize_map(Some(3))?;
+        let (kind, code, details) = match self {
+            AppError::FfmpegMissing => ("ffmpegMissing", None, String::new()),
+            AppError::FfmpegRun(e) => ("ffmpegRun", None, e.to_string()),
+            AppError::FfmpegFailed(c, msg) => ("ffmpegFailed", Some(*c), msg.clone()),
+            AppError::ParseError(msg) => ("parseError", None, msg.clone()),
+            AppError::UnsupportedMedia(msg) => ("unsupportedMedia", None, msg.clone()),
+            AppError::Decode(msg) => ("decode", None, msg.clone()),
+        };
+        map.serialize_entry("kind", kind)?;
+        map.serialize_entry("message", &self.to_string())?;
+        map.serialize_entry("details", &details)?;
+        if let Some(c) = code {
+            map.serialize_entry("code", &c)?;
+        }
+        map.end()
     }
 }
 

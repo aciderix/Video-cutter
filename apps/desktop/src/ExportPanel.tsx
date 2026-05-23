@@ -14,7 +14,14 @@ import {
   exportResolveMarkers,
 } from '@quietcut/exporters';
 import { keptRegions } from '@quietcut/core';
-import { cancelExport, runExportCut, runExportSegmented, tempDir, writeFile } from './bridge.ts';
+import {
+  cancelExport,
+  formatBridgeError,
+  runExportCut,
+  runExportSegmented,
+  tempDir,
+  writeFile,
+} from './bridge.ts';
 
 type NleFormat = 'fcpxml' | 'otio' | 'edl' | 'resolve';
 
@@ -131,7 +138,7 @@ export function ExportPanel({ source, regions, projectName }: Props) {
         );
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatBridgeError(e));
     } finally {
       setBusy(false);
       setActiveJobId(null);
@@ -163,7 +170,7 @@ export function ExportPanel({ source, regions, projectName }: Props) {
       await writeFile(outputPath, content);
       setStatus(`Wrote ${def.label} → ${outputPath}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(formatBridgeError(e));
     }
   };
 

@@ -29,6 +29,7 @@ import {
   writeFile,
   readFile,
   pathExists,
+  formatBridgeError,
 } from './bridge.ts';
 import { MediaPlayer, type MediaPlayerHandle } from './MediaPlayer.tsx';
 import { ExportPanel } from './ExportPanel.tsx';
@@ -48,6 +49,7 @@ export function App() {
   const settings = useStore((s) => s.detectionSettings);
   const projectName = useStore((s) => s.projectName);
   const projectPath = useStore((s) => s.projectPath);
+  const dirty = useStore((s) => s.dirty);
   const store = useStore;
 
   const source = useMemo(
@@ -91,6 +93,7 @@ export function App() {
     async (path: string, currentSettings: SilenceDetectionSettings): Promise<MediaSource> => {
       const src = await analyzeMedia(path);
       store.getState().addSource(src);
+      store.getState().setPeaksLoading(src.id, true);
       const [silences, wavePeaks] = await Promise.all([
         runSilenceDetection(src.path, currentSettings),
         computePeaks(src.path, 2048, src.duration).catch(() => null),
@@ -99,6 +102,7 @@ export function App() {
         .getState()
         .setRegionsFor(src.id, buildRegionsFromSilences(src.duration, silences, currentSettings));
       if (wavePeaks) store.getState().setPeaksFor(src.id, wavePeaks);
+      store.getState().setPeaksLoading(src.id, false);
       return src;
     },
     [store],
@@ -106,43 +110,49 @@ export function App() {
 
   const openFiles = async () => {
     setError(null);
-    try {
-      const paths = await pickMediaFiles();
-      if (paths.length === 0) return;
-      setBusy(true);
-      setBatchProgress({ index: 0, total: paths.length });
-      const currentSettings = store.getState().detectionSettings;
-      for (let i = 0; i < paths.length; i++) {
-        setBatchProgress({ index: i, total: paths.length });
+    const paths = await pickMediaFiles();
+    if (paths.length === 0) return;
+    setBusy(true);
+    setBatchProgress({ index: 0, total: paths.length });
+    const currentSettings = store.getState().detectionSettings;
+    const failures: string[] = [];
+    for (let i = 0; i < paths.length; i++) {
+      setBatchProgress({ index: i, total: paths.length });
+      try {
         await analyzeOne(paths[i]!, currentSettings);
+      } catch (e) {
+        failures.push(`${paths[i]}: ${formatBridgeError(e)}`);
       }
-      store.getState().resetHistory();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBatchProgress(null);
-      setBusy(false);
+    }
+    store.getState().resetHistory();
+    setBatchProgress(null);
+    setBusy(false);
+    if (failures.length > 0) {
+      setError(`Failed: ${failures.length}/${paths.length}\n${failures.join('\n')}`);
     }
   };
 
   const reanalyzeAll = useCallback(async () => {
     setBusy(true);
     setError(null);
-    try {
-      const list = store.getState().sources;
-      const s = store.getState().detectionSettings;
-      for (let i = 0; i < list.length; i++) {
-        setBatchProgress({ index: i, total: list.length });
-        const src = list[i]!;
+    const list = store.getState().sources;
+    const s = store.getState().detectionSettings;
+    const failures: string[] = [];
+    for (let i = 0; i < list.length; i++) {
+      setBatchProgress({ index: i, total: list.length });
+      const src = list[i]!;
+      try {
         const silences = await runSilenceDetection(src.path, s);
         store.getState().setRegionsFor(src.id, buildRegionsFromSilences(src.duration, silences, s));
+      } catch (e) {
+        failures.push(`${src.name}: ${formatBridgeError(e)}`);
       }
-      store.getState().resetHistory();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBatchProgress(null);
-      setBusy(false);
+    }
+    store.getState().resetHistory();
+    setBatchProgress(null);
+    setBusy(false);
+    if (failures.length > 0) {
+      setError(`Failed: ${failures.length}/${list.length}\n${failures.join('\n')}`);
     }
   }, [store]);
 
@@ -154,11 +164,13 @@ export function App() {
     if (!path) return;
     await writeFile(path, serializeProject(store.getState().toProjectFile()));
     store.getState().setProjectPath(path);
+    store.getState().markClean();
   };
 
   const saveProject = async () => {
     if (!projectPath) return saveProjectAs();
     await writeFile(projectPath, serializeProject(store.getState().toProjectFile()));
+    store.getState().markClean();
   };
 
   const loadProject = async () => {
@@ -186,7 +198,7 @@ export function App() {
         setError(`Missing source files (use Relink in the sidebar): ${missing.join(', ')}`);
       }
     } catch (e) {
-      setError(`Failed to load project: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Failed to load project: ${formatBridgeError(e)}`);
     }
   };
 
@@ -201,7 +213,7 @@ export function App() {
         if (peaks) store.getState().setPeaksFor(id, peaks);
         setError(null);
       } catch (e) {
-        setError(`Relink failed: ${e instanceof Error ? e.message : String(e)}`);
+        setError(`Relink failed: ${formatBridgeError(e)}`);
       }
     },
     [store],
@@ -238,8 +250,8 @@ export function App() {
     const current = store.getState();
     const sid = current.currentSourceId;
     if (!sid) return;
-    const after = current.regionsBySource[sid] ?? [];
-    // Push the pre-drag snapshot to history without disturbing `after`.
+    // Push the pre-drag snapshot to history without disturbing the current
+    // (post-drag) regions array.
     current.pushHistorySnapshot(sid, snapshot);
   }, [store]);
 
@@ -288,7 +300,7 @@ export function App() {
         onSaveProject={saveProject}
         onSaveProjectAs={saveProjectAs}
         projectName={projectName}
-        projectDirty={false}
+        projectDirty={dirty}
       />
       <main className="flex flex-1 min-h-0">
         <Sidebar
@@ -415,7 +427,9 @@ function Statusbar({
       <span>Output: {kept.toFixed(2)}s</span>
       <span>Removed: {(duration - kept).toFixed(2)}s</span>
       <span>{drops} cuts</span>
-      <span className="ml-auto">Space play · J/L skip · K split · D toggle · ⌘Z undo</span>
+      <span className="ml-auto">
+        Space play · J/L skip · K split · D toggle · ⌘Z undo · ⌘⇧Z redo · ←/→ scrub
+      </span>
     </footer>
   );
 }

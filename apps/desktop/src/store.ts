@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { MediaSource, ProjectFile, Region, SilenceDetectionSettings } from '@quietcut/core';
-import { DEFAULT_DETECTION } from '@quietcut/core';
+import { DEFAULT_DETECTION, createEmptyProject } from '@quietcut/core';
 
 interface RegionsSnapshot {
   sourceId: string;
@@ -12,17 +12,16 @@ interface QuietcutState {
   currentSourceId: string | null;
   regionsBySource: Record<string, Region[]>;
   peaksBySource: Record<string, Float32Array>;
+  /** Set of source ids that currently have a peaks computation in flight. */
+  peaksLoadingFor: Set<string>;
   detectionSettings: SilenceDetectionSettings;
   currentTime: number;
   past: RegionsSnapshot[];
   future: RegionsSnapshot[];
   projectPath: string | null;
   projectName: string;
-
-  // Derived selectors
-  source: () => MediaSource | null;
-  regions: () => Region[];
-  peaks: () => Float32Array | null;
+  /** True when there are unsaved mutations since the last save/load. */
+  dirty: boolean;
 
   // Sources
   addSource: (source: MediaSource) => void;
@@ -41,6 +40,7 @@ interface QuietcutState {
   pushHistorySnapshot: (sourceId: string, regions: Region[]) => void;
   setPeaks: (peaks: Float32Array | null) => void;
   setPeaksFor: (sourceId: string, peaks: Float32Array) => void;
+  setPeaksLoading: (sourceId: string, loading: boolean) => void;
 
   // Misc
   setCurrentTime: (t: number) => void;
@@ -57,6 +57,7 @@ interface QuietcutState {
   loadProject: (project: ProjectFile, path: string | null) => void;
   toProjectFile: () => ProjectFile;
   resetProject: () => void;
+  markClean: () => void;
 }
 
 const HISTORY_LIMIT = 100;
@@ -66,25 +67,14 @@ export const useStore = create<QuietcutState>((set, get) => ({
   currentSourceId: null,
   regionsBySource: {},
   peaksBySource: {},
+  peaksLoadingFor: new Set<string>(),
   detectionSettings: { ...DEFAULT_DETECTION },
   currentTime: 0,
   past: [],
   future: [],
   projectPath: null,
   projectName: 'Untitled',
-
-  source: () => {
-    const { sources, currentSourceId } = get();
-    return sources.find((s) => s.id === currentSourceId) ?? null;
-  },
-  regions: () => {
-    const { regionsBySource, currentSourceId } = get();
-    return currentSourceId ? (regionsBySource[currentSourceId] ?? []) : [];
-  },
-  peaks: () => {
-    const { peaksBySource, currentSourceId } = get();
-    return currentSourceId ? (peaksBySource[currentSourceId] ?? null) : null;
-  },
+  dirty: false,
 
   addSource: (source) => {
     const { sources } = get();
@@ -96,6 +86,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
       sources: [...sources, source],
       currentSourceId: source.id,
       currentTime: 0,
+      dirty: true,
     });
   },
 
@@ -111,6 +102,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
       regionsBySource: newRegions,
       peaksBySource: newPeaks,
       currentSourceId: currentSourceId === id ? (rest[0]?.id ?? null) : currentSourceId,
+      dirty: true,
     });
   },
 
@@ -139,9 +131,13 @@ export const useStore = create<QuietcutState>((set, get) => ({
         regionsBySource: { ...regionsBySource, [currentSourceId]: regions },
         past: newPast,
         future: [],
+        dirty: true,
       });
     } else {
-      set({ regionsBySource: { ...regionsBySource, [currentSourceId]: regions } });
+      set({
+        regionsBySource: { ...regionsBySource, [currentSourceId]: regions },
+        dirty: true,
+      });
     }
   },
 
@@ -156,7 +152,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
     const changed = current.length !== regions.length || current.some((r, i) => r !== regions[i]);
     if (!changed) return;
     const newPast = [...past, { sourceId, regions }].slice(-HISTORY_LIMIT);
-    set({ past: newPast, future: [] });
+    set({ past: newPast, future: [], dirty: true });
   },
 
   setPeaks: (peaks) => {
@@ -170,6 +166,13 @@ export const useStore = create<QuietcutState>((set, get) => ({
 
   setPeaksFor: (sourceId, peaks) => {
     set({ peaksBySource: { ...get().peaksBySource, [sourceId]: peaks } });
+  },
+
+  setPeaksLoading: (sourceId, loading) => {
+    const next = new Set(get().peaksLoadingFor);
+    if (loading) next.add(sourceId);
+    else next.delete(sourceId);
+    set({ peaksLoadingFor: next });
   },
 
   setCurrentTime: (currentTime) => set({ currentTime }),
@@ -224,17 +227,16 @@ export const useStore = create<QuietcutState>((set, get) => ({
       future: [],
       projectPath: path,
       projectName: project.name,
+      dirty: false,
     });
   },
 
   toProjectFile: () => {
     const { sources, regionsBySource, detectionSettings, projectName } = get();
-    const now = new Date().toISOString();
+    const base = createEmptyProject(projectName);
     return {
-      version: 1,
-      name: projectName,
-      createdAt: now,
-      updatedAt: now,
+      ...base,
+      updatedAt: new Date().toISOString(),
       sources,
       regionsBySource,
       detectionSettings,
@@ -242,17 +244,21 @@ export const useStore = create<QuietcutState>((set, get) => ({
   },
 
   resetProject: () => {
+    const empty = createEmptyProject();
     set({
-      sources: [],
+      sources: empty.sources,
       currentSourceId: null,
-      regionsBySource: {},
+      regionsBySource: empty.regionsBySource,
       peaksBySource: {},
-      detectionSettings: { ...DEFAULT_DETECTION },
+      detectionSettings: empty.detectionSettings,
       currentTime: 0,
       past: [],
       future: [],
       projectPath: null,
-      projectName: 'Untitled',
+      projectName: empty.name,
+      dirty: false,
     });
   },
+
+  markClean: () => set({ dirty: false }),
 }));
