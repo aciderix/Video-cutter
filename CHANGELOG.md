@@ -4,6 +4,51 @@ All notable changes to Quietcut are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — Waveform fix, centered playhead, mobile video export
+
+### Fixed
+
+- **Waveform disappears when zoomed in** (regression bug). `downsamplePeaks`
+  now upsamples via nearest-neighbor when the output bucket count exceeds
+  the input sample count. Previously most buckets had `start === end` and
+  stayed at zero, painting an invisible waveform past zoom ≈ 2.
+- Six new unit tests cover both downsampling and upsampling paths, plus
+  the all-zeros and empty-input edge cases.
+
+### Added
+
+- **Beautiful waveform**: filled mirrored bars with an indigo vertical
+  gradient (`#c7d2fe → #6366f1 → #c7d2fe`), a subtle background gradient,
+  a faint mid-axis line, and a triangular playhead handle for a tactile
+  look.
+- **Centered playhead on mobile** (`playheadMode='centered'`). The
+  playhead is pinned to the canvas centre and the waveform slides under
+  it. Dragging horizontally scrubs `currentTime`, pinch zoom anchors on
+  the playhead — much more precise on small screens than tap-to-seek.
+  Desktop keeps the free playhead behaviour.
+- **Tap-to-toggle kept** everywhere (desktop and mobile). A single tap on
+  any region toggles its kept/silence flag — the most common action gets
+  the most accessible gesture. Long-press on a kept region toggles the
+  _export selection_ (separate concept).
+- **Real video export on mobile** via `ffmpeg.wasm`. The first export
+  fetches the ~30 MB core from CDN once, then runs single-threaded
+  encodes against the source file. Five presets: MP4 (H.264 + AAC), WebM
+  (VP9 + Opus), MP3, AAC/M4A, WAV.
+- **Single file vs per-segment export** on mobile. A two-button toggle
+  picks the mode: single concatenated output, or N files (one per
+  selected region) shared one-by-one through the OS share sheet.
+- **Accordions** for Export, Detection, and Regions (the regions list is
+  collapsed by default — was always visible before).
+- Aesthetic refresh: gradient app background, header title in a
+  gradient indigo→emerald, larger primary buttons with proper
+  shadows, generous spacing, mode toggles with clear active state.
+
+### Changed
+
+- The `onRegionClick` prop split into `onRegionKeptToggle` (the new
+  single-tap action) and `onRegionExportToggle` (long-press).
+- WaveformTimeline now exports `PlayheadMode`.
+
 ## [0.4.0] — Timeline zoom + pan + tap-to-select
 
 ### Added

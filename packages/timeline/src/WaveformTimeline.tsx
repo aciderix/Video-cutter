@@ -2,32 +2,39 @@ import { useEffect, useRef, useState } from 'react';
 import type { Region, Seconds } from '@quietcut/core';
 import { downsamplePeaks } from './peaks.ts';
 
+export type PlayheadMode = 'free' | 'centered';
+
 export interface WaveformTimelineProps {
   peaks: Float32Array | null;
   regions: Region[];
   duration: Seconds;
   currentTime: Seconds;
-  /** Viewport zoom factor. 1 = whole clip, 4 = ¼ of the clip visible, etc. */
+  /** Viewport zoom factor. 1 = whole clip, 4 = ¼ of the clip visible. */
   zoom?: number;
   /** Start time (seconds) of the current viewport. */
   offset?: Seconds;
   onZoomChange?: (zoom: number, offset: Seconds) => void;
+  /**
+   * Playhead behaviour:
+   *  - 'free' (desktop default): the playhead moves through a fixed waveform.
+   *    Tap to seek. Drag the body to pan when zoomed.
+   *  - 'centered' (mobile): the playhead is pinned to the canvas centre and
+   *    the waveform slides under it. Drag = scrub `currentTime`. Pinch zoom
+   *    anchors on the playhead.
+   */
+  playheadMode?: PlayheadMode;
   onSeek?: (time: Seconds) => void;
   onBoundaryDrag?: (regionId: string, side: 'start' | 'end', time: Seconds) => void;
   onBoundaryDragEnd?: () => void;
-  /** Double-click handler on a region (toggle kept). */
+  /** Tap on a region toggles its kept flag (works on both modes). */
   onRegionKeptToggle?: (regionId: string) => void;
-  /** Single-click on a kept region body — used to toggle export selection. */
+  /** Optional: long-press on a region toggles the export selection. */
   onRegionExportToggle?: (regionId: string) => void;
-  /** Region ids that are currently selected for export (visual highlight). */
+  /** Region ids currently selected for export (drawn with an emerald halo). */
   selectedExportIds?: ReadonlySet<string>;
   height?: number;
 }
 
-/**
- * Boundary hit zones — bumped on coarse pointers (touch) to match the
- * 44 px iOS / 48 dp Android touch target guidance.
- */
 const HANDLE_PX_DESKTOP = 8;
 const HANDLE_PX_TOUCH = 24;
 const isCoarsePointer = (): boolean =>
@@ -39,6 +46,8 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 200;
 /** Pixels the pointer must move before we consider it a drag (vs a tap). */
 const TAP_THRESHOLD_PX = 6;
+/** Time before a press becomes a "long press" — used to toggle export. */
+const LONG_PRESS_MS = 500;
 
 interface BoundaryDragState {
   kind: 'boundary';
@@ -50,6 +59,7 @@ interface PanDragState {
   kind: 'pan';
   startClientX: number;
   startOffset: Seconds;
+  startCurrentTime: Seconds;
   moved: boolean;
 }
 interface PinchState {
@@ -57,7 +67,6 @@ interface PinchState {
   startDistance: number;
   startZoom: number;
   startOffset: Seconds;
-  /** Time under the midpoint between the two pointers when the pinch started. */
   anchorTime: Seconds;
 }
 type GestureState = BoundaryDragState | PanDragState | PinchState | null;
@@ -70,6 +79,7 @@ export function WaveformTimeline({
   zoom = 1,
   offset = 0,
   onZoomChange,
+  playheadMode = 'free',
   onSeek,
   onBoundaryDrag,
   onBoundaryDragEnd,
@@ -86,13 +96,21 @@ export function WaveformTimeline({
   const gestureRef = useRef<GestureState>(null);
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const justGesturedRef = useRef(false);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressFired = useRef(false);
 
   const safeZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
   const viewSpan = duration / safeZoom;
-  const safeOffset = Math.max(0, Math.min(Math.max(0, duration - viewSpan), offset));
+  // In centered mode the viewport tracks the playhead so the timeline slides
+  // under the fixed playhead line. In free mode we honour the caller's offset.
+  const computedOffset =
+    playheadMode === 'centered' && duration > 0
+      ? clampOffset(currentTime - viewSpan / 2, duration, viewSpan)
+      : clampOffset(offset, duration, viewSpan);
+  const safeOffset = computedOffset;
   const viewEnd = safeOffset + viewSpan;
 
-  /** Helper: convert client x to time, taking the current viewport into account. */
+  /** Convert a clientX pixel to a media time, taking the viewport into account. */
   const pxToTime = (clientX: number): Seconds => {
     const canvas = canvasRef.current;
     if (!canvas || duration <= 0) return 0;
@@ -101,7 +119,7 @@ export function WaveformTimeline({
     return Math.max(0, Math.min(duration, safeOffset + ratio * viewSpan));
   };
 
-  // --- Static layer: waveform + region tinting + export-selection halos ---
+  // --- Static layer: tinted regions + filled mirrored waveform -------------
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -116,35 +134,55 @@ export function WaveformTimeline({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-    // Background
-    ctx.fillStyle = '#18181b';
+    // Background: subtle vertical gradient for depth.
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, cssHeight);
+    bgGradient.addColorStop(0, '#0f1117');
+    bgGradient.addColorStop(0.5, '#171a23');
+    bgGradient.addColorStop(1, '#0f1117');
+    ctx.fillStyle = bgGradient;
     ctx.fillRect(0, 0, cssWidth, cssHeight);
+
+    // Faint mid-line so the waveform has a reference axis.
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
+    ctx.fillRect(0, Math.floor(cssHeight / 2), cssWidth, 1);
 
     const timeToX = (t: Seconds): number => ((t - safeOffset) / viewSpan) * cssWidth;
 
     if (duration > 0) {
-      // Silence regions tinted rose, kept regions get an emerald halo when selected.
       for (const region of regions) {
         if (region.end < safeOffset || region.start > viewEnd) continue;
         const x = timeToX(region.start);
         const w = timeToX(region.end) - x;
         if (!region.kept) {
-          ctx.fillStyle = 'rgba(244, 63, 94, 0.22)';
+          // Silence: warm rose tint with subtle vertical gradient.
+          const g = ctx.createLinearGradient(0, 0, 0, cssHeight);
+          g.addColorStop(0, 'rgba(244, 63, 94, 0.18)');
+          g.addColorStop(0.5, 'rgba(244, 63, 94, 0.28)');
+          g.addColorStop(1, 'rgba(244, 63, 94, 0.18)');
+          ctx.fillStyle = g;
           ctx.fillRect(x, 0, w, cssHeight);
-          ctx.fillStyle = 'rgba(244, 63, 94, 0.55)';
+          ctx.fillStyle = 'rgba(244, 63, 94, 0.6)';
           ctx.fillRect(x, 0, 1, cssHeight);
           ctx.fillRect(x + w - 1, 0, 1, cssHeight);
         } else if (selectedExportIds?.has(region.id)) {
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.16)';
+          // Kept + selected for export: emerald halo with a soft border.
+          const g = ctx.createLinearGradient(0, 0, 0, cssHeight);
+          g.addColorStop(0, 'rgba(16, 185, 129, 0.12)');
+          g.addColorStop(0.5, 'rgba(16, 185, 129, 0.22)');
+          g.addColorStop(1, 'rgba(16, 185, 129, 0.12)');
+          ctx.fillStyle = g;
           ctx.fillRect(x, 0, w, cssHeight);
-          ctx.strokeStyle = 'rgba(16, 185, 129, 0.85)';
-          ctx.lineWidth = 2;
-          ctx.strokeRect(x + 1, 1, w - 2, cssHeight - 2);
+          ctx.strokeStyle = 'rgba(52, 211, 153, 0.7)';
+          ctx.lineWidth = 1.5;
+          ctx.strokeRect(x + 0.75, 0.75, w - 1.5, cssHeight - 1.5);
         }
       }
     }
 
-    // Waveform peaks: draw only the visible window.
+    // Waveform: filled bars mirrored around the centre with a vertical
+    // gradient. The Audacity-style envelope feels more "alive" than the
+    // 1 px lines we used before, and stays visible when zoomed in thanks
+    // to the upsampling branch in `downsamplePeaks`.
     if (peaks && peaks.length > 0 && duration > 0) {
       const totalBins = peaks.length;
       const startBin = Math.max(0, Math.floor((safeOffset / duration) * totalBins));
@@ -152,16 +190,29 @@ export function WaveformTimeline({
       const visible = peaks.subarray(startBin, endBin);
       const { min, max } = downsamplePeaks(visible, Math.floor(cssWidth));
       const mid = cssHeight / 2;
-      ctx.strokeStyle = '#a5b4fc';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
+      const innerHeight = mid - 2;
+
+      const grad = ctx.createLinearGradient(0, 0, 0, cssHeight);
+      grad.addColorStop(0, '#c7d2fe');
+      grad.addColorStop(0.5, '#6366f1');
+      grad.addColorStop(1, '#c7d2fe');
+
+      ctx.fillStyle = grad;
+      // 1 px bars with hairline transparent gap on hi-DPI so it looks crisp.
       for (let x = 0; x < min.length; x++) {
-        const top = mid - max[x]! * mid;
-        const bottom = mid - min[x]! * mid;
-        ctx.moveTo(x + 0.5, top);
-        ctx.lineTo(x + 0.5, bottom);
+        const peakUp = Math.abs(max[x]!);
+        const peakDown = Math.abs(min[x]!);
+        const hUp = Math.max(0.5, peakUp * innerHeight);
+        const hDown = Math.max(0.5, peakDown * innerHeight);
+        ctx.fillRect(x, mid - hUp, 1, hUp + hDown);
       }
-      ctx.stroke();
+
+      // Soft glow underneath, only visible if the canvas is big enough.
+      ctx.shadowColor = 'rgba(99, 102, 241, 0.6)';
+      ctx.shadowBlur = 6;
+      ctx.fillStyle = 'rgba(165, 180, 252, 0.0)';
+      ctx.fillRect(0, mid - 0.5, cssWidth, 1);
+      ctx.shadowBlur = 0;
     }
   }, [
     peaks,
@@ -175,7 +226,7 @@ export function WaveformTimeline({
     selectedExportIds,
   ]);
 
-  // --- Overlay layer: playhead + viewport scrollbar minimap ---
+  // --- Overlay layer: playhead + scrollbar mini ---------------------------
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
@@ -190,17 +241,31 @@ export function WaveformTimeline({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
-    if (duration > 0 && currentTime >= safeOffset && currentTime <= viewEnd) {
-      const px = ((currentTime - safeOffset) / viewSpan) * cssWidth;
-      ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(px, 0);
-      ctx.lineTo(px, cssHeight);
-      ctx.stroke();
+    if (duration > 0) {
+      const px =
+        playheadMode === 'centered'
+          ? cssWidth / 2
+          : currentTime >= safeOffset && currentTime <= viewEnd
+            ? ((currentTime - safeOffset) / viewSpan) * cssWidth
+            : -10;
+      if (px >= 0) {
+        // Triangular handle at the top for tactile feel, then a vertical line.
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath();
+        ctx.moveTo(px - 5, 0);
+        ctx.lineTo(px + 5, 0);
+        ctx.lineTo(px, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(px, 0);
+        ctx.lineTo(px, cssHeight);
+        ctx.stroke();
+      }
     }
 
-    // Mini-scrollbar at the bottom when zoomed
     if (safeZoom > 1 && duration > 0) {
       const trackY = cssHeight - 4;
       ctx.fillStyle = 'rgba(255, 255, 255, 0.06)';
@@ -210,7 +275,7 @@ export function WaveformTimeline({
       ctx.fillStyle = 'rgba(165, 180, 252, 0.7)';
       ctx.fillRect(tx, trackY, Math.max(8, tw), 3);
     }
-  }, [currentTime, duration, safeZoom, safeOffset, viewSpan, viewEnd]);
+  }, [currentTime, duration, safeZoom, safeOffset, viewSpan, viewEnd, playheadMode]);
 
   const hitTestBoundary = (clientX: number): { regionId: string; side: 'start' | 'end' } | null => {
     const canvas = canvasRef.current;
@@ -236,25 +301,33 @@ export function WaveformTimeline({
     return regions.find((r) => t >= r.start && t <= r.end) ?? null;
   };
 
-  // --- Global pointer listeners (drag survives off-canvas releases) ---
+  const cancelLongPress = () => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  };
+
+  // --- Global pointer listeners ---
   useEffect(() => {
     const onPointerMove = (e: PointerEvent) => {
       activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       const gesture = gestureRef.current;
 
-      // Pinch zoom while two pointers are tracked.
       if (activePointers.current.size === 2 && onZoomChange) {
         const pts = [...activePointers.current.values()];
         const distance = Math.abs(pts[0]!.x - pts[1]!.x);
         if (!gesture || gesture.kind !== 'pinch') {
           const mid = (pts[0]!.x + pts[1]!.x) / 2;
+          const anchorTime = playheadMode === 'centered' ? currentTime : pxToTime(mid);
           gestureRef.current = {
             kind: 'pinch',
             startDistance: distance || 1,
             startZoom: safeZoom,
             startOffset: safeOffset,
-            anchorTime: pxToTime(mid),
+            anchorTime,
           };
+          cancelLongPress();
           return;
         }
         const ratio = distance / gesture.startDistance;
@@ -263,29 +336,39 @@ export function WaveformTimeline({
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         const midX = (pts[0]!.x + pts[1]!.x) / 2;
-        const midRatio = (midX - rect.left) / rect.width;
+        const midRatio = playheadMode === 'centered' ? 0.5 : (midX - rect.left) / rect.width;
         const newViewSpan = duration / newZoom;
-        const newOffset = Math.max(
-          0,
-          Math.min(duration - newViewSpan, gesture.anchorTime - midRatio * newViewSpan),
-        );
+        const newOffset =
+          playheadMode === 'centered'
+            ? 0 // centered mode recomputes offset on each render
+            : Math.max(
+                0,
+                Math.min(duration - newViewSpan, gesture.anchorTime - midRatio * newViewSpan),
+              );
         onZoomChange(newZoom, newOffset);
         return;
       }
 
       if (!gesture) return;
+      cancelLongPress();
       if (gesture.kind === 'boundary' && onBoundaryDrag) {
         gesture.didMove = true;
         onBoundaryDrag(gesture.regionId, gesture.side, pxToTime(e.clientX));
-      } else if (gesture.kind === 'pan' && onZoomChange) {
+      } else if (gesture.kind === 'pan') {
         const dxPx = e.clientX - gesture.startClientX;
         if (Math.abs(dxPx) > TAP_THRESHOLD_PX) gesture.moved = true;
         const canvas = canvasRef.current;
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
-        const dx = (dxPx / rect.width) * viewSpan;
-        const next = Math.max(0, Math.min(duration - viewSpan, gesture.startOffset - dx));
-        onZoomChange(safeZoom, next);
+        const dt = (dxPx / rect.width) * viewSpan;
+        if (playheadMode === 'centered' && onSeek) {
+          // Dragging the waveform under the fixed playhead = scrubbing.
+          const target = Math.max(0, Math.min(duration, gesture.startCurrentTime - dt));
+          onSeek(target);
+        } else if (onZoomChange) {
+          const next = Math.max(0, Math.min(duration - viewSpan, gesture.startOffset - dt));
+          onZoomChange(safeZoom, next);
+        }
       }
     };
 
@@ -294,6 +377,7 @@ export function WaveformTimeline({
       if (activePointers.current.size < 2 && gestureRef.current?.kind === 'pinch') {
         gestureRef.current = null;
       }
+      cancelLongPress();
       const gesture = gestureRef.current;
       if (!gesture) return;
       if (gesture.kind === 'boundary' && gesture.didMove) {
@@ -307,6 +391,7 @@ export function WaveformTimeline({
 
     const cancel = () => {
       activePointers.current.clear();
+      cancelLongPress();
       gestureRef.current = null;
     };
 
@@ -320,14 +405,23 @@ export function WaveformTimeline({
       window.removeEventListener('pointercancel', cancel);
       window.removeEventListener('blur', cancel);
     };
-  }, [onBoundaryDrag, onBoundaryDragEnd, onZoomChange, duration, viewSpan, safeOffset, safeZoom]);
+  }, [
+    onBoundaryDrag,
+    onBoundaryDragEnd,
+    onZoomChange,
+    onSeek,
+    duration,
+    viewSpan,
+    safeOffset,
+    safeZoom,
+    currentTime,
+    playheadMode,
+  ]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (activePointers.current.size >= 2) {
-      // Pinch start handled in pointermove.
-      return;
-    }
+    if (activePointers.current.size >= 2) return;
+
     const hit = hitTestBoundary(e.clientX);
     if (hit && onBoundaryDrag) {
       gestureRef.current = { kind: 'boundary', ...hit, didMove: false };
@@ -336,42 +430,53 @@ export function WaveformTimeline({
       setHoverCursor('grabbing');
       return;
     }
-    // Default: start a pan that promotes to a tap on release.
     gestureRef.current = {
       kind: 'pan',
       startClientX: e.clientX,
       startOffset: safeOffset,
+      startCurrentTime: currentTime,
       moved: false,
     };
     e.currentTarget.setPointerCapture?.(e.pointerId);
     setHoverCursor('grabbing');
+
+    // Long-press → export-selection toggle. Cancelled as soon as the user
+    // actually drags (see onPointerMove).
+    longPressFired.current = false;
+    if (onRegionExportToggle) {
+      const clientX = e.clientX;
+      cancelLongPress();
+      longPressTimer.current = setTimeout(() => {
+        const region = regionAtClient(clientX);
+        if (region && region.kept) {
+          longPressFired.current = true;
+          onRegionExportToggle(region.id);
+        }
+      }, LONG_PRESS_MS);
+    }
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (gestureRef.current) return;
     if (hitTestBoundary(e.clientX)) setHoverCursor('col-resize');
+    else if (playheadMode === 'centered') setHoverCursor('grab');
     else setHoverCursor(safeZoom > 1 ? 'grab' : 'pointer');
   };
 
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (justGesturedRef.current) {
+    if (justGesturedRef.current || longPressFired.current) {
       justGesturedRef.current = false;
+      longPressFired.current = false;
       return;
     }
     if (hitTestBoundary(e.clientX)) return;
-    if (e.detail === 2 && onRegionKeptToggle) {
-      const region = regionAtClient(e.clientX);
-      if (region) {
-        onRegionKeptToggle(region.id);
-        return;
-      }
-    }
     const t = pxToTime(e.clientX);
-    onSeek?.(t);
-    // Single tap on a kept region also toggles the export selection.
+    // Free mode: tap seeks. Centered mode: the seek is handled by the drag
+    // gesture, so a tap acts purely as the kept-toggle.
+    if (playheadMode !== 'centered') onSeek?.(t);
     const region = regionAtClient(e.clientX);
-    if (region && region.kept && onRegionExportToggle) {
-      onRegionExportToggle(region.id);
+    if (region && onRegionKeptToggle) {
+      onRegionKeptToggle(region.id);
     }
   };
 
@@ -384,14 +489,12 @@ export function WaveformTimeline({
     const ratio = (e.clientX - rect.left) / rect.width;
     const focus = safeOffset + ratio * viewSpan;
     if (e.ctrlKey || e.metaKey) {
-      // Ctrl+wheel: zoom around the cursor.
       const factor = Math.exp(-e.deltaY * 0.0015);
       const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, safeZoom * factor));
       const newViewSpan = duration / newZoom;
       const newOffset = Math.max(0, Math.min(duration - newViewSpan, focus - ratio * newViewSpan));
       onZoomChange?.(newZoom, newOffset);
     } else {
-      // Plain wheel: horizontal pan (only meaningful when zoomed in).
       if (safeZoom <= 1) return;
       const dx = (e.deltaY + e.deltaX) * (viewSpan / rect.width);
       const newOffset = Math.max(0, Math.min(duration - viewSpan, safeOffset + dx));
@@ -426,10 +529,7 @@ export function WaveformTimeline({
   };
 
   return (
-    <div
-      style={{ position: 'relative', width: '100%', height, touchAction: 'none' }}
-      onWheelCapture={(e) => e.preventDefault()}
-    >
+    <div style={{ position: 'relative', width: '100%', height, touchAction: 'none' }}>
       <canvas
         ref={canvasRef}
         onPointerDown={handlePointerDown}
@@ -439,7 +539,11 @@ export function WaveformTimeline({
         onWheel={handleWheel}
         role="slider"
         tabIndex={0}
-        aria-label="Waveform timeline. Tap a kept region to add it to the export, double-tap to toggle keep, drag to pan, pinch or Ctrl+wheel to zoom."
+        aria-label={
+          playheadMode === 'centered'
+            ? 'Waveform timeline. Drag horizontally to scrub. Tap a region to toggle it. Pinch to zoom.'
+            : 'Waveform timeline. Tap to seek and toggle the region under the cursor. Drag the body to pan. Pinch or Ctrl+wheel to zoom.'
+        }
         aria-valuemin={0}
         aria-valuemax={duration}
         aria-valuenow={currentTime}
@@ -454,19 +558,16 @@ export function WaveformTimeline({
       <canvas
         ref={overlayRef}
         aria-hidden="true"
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height,
-          pointerEvents: 'none',
-        }}
+        style={{ position: 'absolute', inset: 0, width: '100%', height, pointerEvents: 'none' }}
       />
     </div>
   );
 }
 
-/** Helper for callers: clamp a zoom + offset pair to the legal viewport. */
+function clampOffset(offset: Seconds, duration: Seconds, viewSpan: Seconds): Seconds {
+  return Math.max(0, Math.min(Math.max(0, duration - viewSpan), offset));
+}
+
 export function clampViewport(
   zoom: number,
   offset: Seconds,
@@ -474,7 +575,7 @@ export function clampViewport(
 ): { zoom: number; offset: Seconds } {
   const z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
   const span = duration / z;
-  return { zoom: z, offset: Math.max(0, Math.min(Math.max(0, duration - span), offset)) };
+  return { zoom: z, offset: clampOffset(offset, duration, span) };
 }
 
 export { MIN_ZOOM, MAX_ZOOM };
