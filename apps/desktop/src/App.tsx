@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { save, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { save, open as openDialog, confirm } from '@tauri-apps/plugin-dialog';
+import { listen } from '@tauri-apps/api/event';
 import { Button, Slider } from '@quietcut/ui';
 import { WaveformTimeline } from '@quietcut/timeline';
 import {
   PROJECT_FILE_EXTENSION,
+  QUIETCUT_VERSION,
   buildRegionsFromSilences,
   mergeRight,
   moveBoundary,
@@ -219,7 +221,73 @@ export function App() {
     [store],
   );
 
-  const newProject = () => store.getState().resetProject();
+  const newProject = async () => {
+    if (store.getState().dirty) {
+      const ok = await confirm('Discard unsaved changes and start a new project?', {
+        title: 'New project',
+        kind: 'warning',
+      });
+      if (!ok) return;
+    }
+    store.getState().resetProject();
+  };
+
+  const removeSourceWithConfirm = async (id: string) => {
+    const s = store.getState().sources.find((x) => x.id === id);
+    if (!s) return;
+    const ok = await confirm(`Remove ${s.name} from the project? Regions will be lost.`, {
+      title: 'Remove source',
+      kind: 'warning',
+    });
+    if (!ok) return;
+    store.getState().removeSource(id);
+  };
+
+  const handleDroppedPaths = useCallback(
+    async (paths: string[]) => {
+      const mediaPaths = paths.filter((p) =>
+        /\.(mp4|mov|mkv|webm|avi|mp3|wav|flac|m4a|aac|ogg|quietcut)$/i.test(p),
+      );
+      if (mediaPaths.length === 0) return;
+      const projectPath = mediaPaths.find((p) => p.endsWith('.quietcut'));
+      if (projectPath) {
+        try {
+          const raw = await readFile(projectPath);
+          store.getState().loadProject(parseProject(raw), projectPath);
+        } catch (e) {
+          setError(`Failed to load project: ${formatBridgeError(e)}`);
+        }
+        return;
+      }
+      const currentSettings = store.getState().detectionSettings;
+      setBusy(true);
+      setBatchProgress({ index: 0, total: mediaPaths.length });
+      const failures: string[] = [];
+      for (let i = 0; i < mediaPaths.length; i++) {
+        setBatchProgress({ index: i, total: mediaPaths.length });
+        try {
+          await analyzeOne(mediaPaths[i]!, currentSettings);
+        } catch (e) {
+          failures.push(`${mediaPaths[i]}: ${formatBridgeError(e)}`);
+        }
+      }
+      setBatchProgress(null);
+      setBusy(false);
+      if (failures.length > 0) {
+        setError(failures.join('\n'));
+      }
+    },
+    [analyzeOne, store],
+  );
+
+  useEffect(() => {
+    const unlisten = listen<{ paths: string[] }>('tauri://drag-drop', (e) => {
+      void handleDroppedPaths(e.payload.paths ?? []);
+    });
+    return () => {
+      void unlisten.then((f) => f());
+    };
+  }, [handleDroppedPaths]);
 
   const onSeek = useCallback(
     (t: number) => {
@@ -310,7 +378,7 @@ export function App() {
           settings={settings}
           batchProgress={batchProgress}
           onSelectSource={(id) => store.getState().selectSource(id)}
-          onRemoveSource={(id) => store.getState().removeSource(id)}
+          onRemoveSource={removeSourceWithConfirm}
           onRelinkSource={relinkSource}
           onSettingsChange={onSettingsChange}
           onReanalyzeAll={reanalyzeAll}
@@ -401,7 +469,7 @@ function Header({
         <Button variant="ghost" size="sm" onClick={onRedo} disabled={!canRedo}>
           Redo
         </Button>
-        <span className="ml-3 text-xs text-zinc-500">v0.1.0 — Phase 7 advanced</span>
+        <span className="ml-3 text-xs text-zinc-500">v{QUIETCUT_VERSION}</span>
       </div>
     </header>
   );
@@ -501,6 +569,7 @@ function SourceView({
             {source.duration.toFixed(1)}s · {regions.filter((r) => !r.kept).length} silences · save{' '}
             {savedSeconds.toFixed(1)}s
           </p>
+          <MediaInfo source={source} />
         </div>
       </div>
       <MediaPlayer ref={playerRef} source={source} onTimeUpdate={onTimeUpdate} />
@@ -526,6 +595,33 @@ function SourceView({
       />
       {busy && <p className="text-sm text-zinc-400">Analyzing…</p>}
     </div>
+  );
+}
+
+function MediaInfo({ source }: { source: MediaSource }) {
+  const parts: string[] = [];
+  if (source.videoStream) {
+    parts.push(
+      `${source.videoStream.width}×${source.videoStream.height}`,
+      `${source.videoStream.frameRate.toFixed(2)} fps`,
+      source.videoStream.codec.toUpperCase(),
+    );
+    if (source.videoStream.bitrate) {
+      parts.push(`${Math.round(source.videoStream.bitrate / 1000)} kbps`);
+    }
+  }
+  if (source.audioStream) {
+    parts.push(
+      `${(source.audioStream.sampleRate / 1000).toFixed(1)} kHz`,
+      `${source.audioStream.channels}ch`,
+      source.audioStream.codec.toUpperCase(),
+    );
+  }
+  if (parts.length === 0) return null;
+  return (
+    <p className="mt-1 text-xs text-zinc-500" title="Source media metadata">
+      {parts.join(' · ')}
+    </p>
   );
 }
 
