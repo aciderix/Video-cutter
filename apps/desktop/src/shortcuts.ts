@@ -16,6 +16,8 @@ export interface ShortcutMap {
   /** Undo / redo. */
   undo?: Handler;
   redo?: Handler;
+  /** Toggle "preview cuts" (skip silences during playback). */
+  togglePreview?: Handler;
 }
 
 /**
@@ -57,6 +59,11 @@ export function useShortcuts(map: ShortcutMap) {
       if (e.code === 'KeyD') {
         e.preventDefault();
         m.toggleRegion?.(e);
+        return;
+      }
+      if (e.code === 'KeyP') {
+        e.preventDefault();
+        m.togglePreview?.(e);
         return;
       }
       if (ctrl && e.code === 'KeyZ' && !e.shiftKey) {

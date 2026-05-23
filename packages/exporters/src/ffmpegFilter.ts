@@ -1,5 +1,7 @@
 import { keptRegions } from '@quietcut/core';
+import type { Region } from '@quietcut/core';
 import type { ExportContext } from './types.ts';
+import type { FormatPreset } from './formats.ts';
 
 /**
  * Single-pass FFmpeg invocation that trims, concatenates, and re-encodes the
@@ -21,47 +23,56 @@ export interface FilterComplexExport {
 
 export interface FilterComplexOptions {
   outputPath: string;
-  /** Re-encode video codec (default libx264). Use 'libx264'/'libx265'/'copy' etc. */
+  /** Format preset — drives codec, container, extra args, video on/off. */
+  preset?: FormatPreset;
+  /** Legacy raw overrides (kept for callers that pre-date `preset`). */
   videoCodec?: string;
-  /** Re-encode audio codec (default aac). */
   audioCodec?: string;
-  /** Extra args appended after -map but before output (e.g. ['-crf', '18']). */
   extraArgs?: string[];
+  /**
+   * If provided, restricts the segments to this whitelist of region ids
+   * regardless of the regions' `kept` flag. Lets the UI export a subset of
+   * the kept regions without mutating the data model.
+   */
+  selectedIds?: ReadonlySet<string>;
 }
 
 export function buildFilterComplexExport(
   ctx: ExportContext,
   options: FilterComplexOptions,
 ): FilterComplexExport {
-  const kept = keptRegions(ctx.regions);
-  const hasVideo = ctx.source.hasVideo;
-  const hasAudio = ctx.source.hasAudio;
-  if (kept.length === 0) {
-    throw new Error('export: no kept regions');
+  const segments = pickSegments(ctx.regions, options.selectedIds);
+  // hasVideo defaults to the source, but an audio-only preset overrides it.
+  const sourceHasVideo = ctx.source.hasVideo;
+  const sourceHasAudio = ctx.source.hasAudio;
+  const wantVideo = (options.preset?.hasVideo ?? sourceHasVideo) && sourceHasVideo;
+  const wantAudio = sourceHasAudio;
+  if (segments.length === 0) {
+    throw new Error('export: no segments selected');
   }
-  if (!hasVideo && !hasAudio) {
-    throw new Error('export: source has neither audio nor video');
+  if (!wantVideo && !wantAudio) {
+    throw new Error('export: nothing to encode (source has no audio or video)');
   }
 
   const parts: string[] = [];
   const concatInputs: string[] = [];
-  kept.forEach((r, i) => {
+  segments.forEach((r, i) => {
     const ss = r.start.toFixed(6);
     const ee = r.end.toFixed(6);
-    if (hasVideo) {
+    if (wantVideo) {
       parts.push(`[0:v]trim=start=${ss}:end=${ee},setpts=PTS-STARTPTS[v${i}]`);
     }
-    if (hasAudio) {
+    if (wantAudio) {
       parts.push(`[0:a]atrim=start=${ss}:end=${ee},asetpts=PTS-STARTPTS[a${i}]`);
     }
-    if (hasVideo) concatInputs.push(`[v${i}]`);
-    if (hasAudio) concatInputs.push(`[a${i}]`);
+    if (wantVideo) concatInputs.push(`[v${i}]`);
+    if (wantAudio) concatInputs.push(`[a${i}]`);
   });
-  const vFlag = hasVideo ? 1 : 0;
-  const aFlag = hasAudio ? 1 : 0;
+  const vFlag = wantVideo ? 1 : 0;
+  const aFlag = wantAudio ? 1 : 0;
   parts.push(
-    `${concatInputs.join('')}concat=n=${kept.length}:v=${vFlag}:a=${aFlag}` +
-      `${hasVideo ? '[v]' : ''}${hasAudio ? '[a]' : ''}`,
+    `${concatInputs.join('')}concat=n=${segments.length}:v=${vFlag}:a=${aFlag}` +
+      `${wantVideo ? '[v]' : ''}${wantAudio ? '[a]' : ''}`,
   );
 
   const args: string[] = [
@@ -73,11 +84,19 @@ export function buildFilterComplexExport(
     '-filter_complex',
     parts.join(';'),
   ];
-  if (hasVideo) args.push('-map', '[v]', '-c:v', options.videoCodec ?? 'libx264');
-  if (hasAudio) args.push('-map', '[a]', '-c:a', options.audioCodec ?? 'aac');
+  const videoCodec = options.preset?.videoCodec ?? options.videoCodec ?? 'libx264';
+  const audioCodec = options.preset?.audioCodec ?? options.audioCodec ?? 'aac';
+  if (wantVideo) args.push('-map', '[v]', '-c:v', videoCodec);
+  if (wantAudio) args.push('-map', '[a]', '-c:a', audioCodec);
+  if (options.preset?.extraArgs) args.push(...options.preset.extraArgs);
   if (options.extraArgs) args.push(...options.extraArgs);
   args.push(options.outputPath);
 
-  const outputDurationS = kept.reduce((acc, r) => acc + (r.end - r.start), 0);
-  return { args, outputDurationS, segmentCount: kept.length };
+  const outputDurationS = segments.reduce((acc, r) => acc + (r.end - r.start), 0);
+  return { args, outputDurationS, segmentCount: segments.length };
+}
+
+function pickSegments(regions: Region[], selectedIds?: ReadonlySet<string>): Region[] {
+  if (!selectedIds) return keptRegions(regions);
+  return regions.filter((r) => selectedIds.has(r.id));
 }

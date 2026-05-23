@@ -22,6 +22,11 @@ interface QuietcutState {
   projectName: string;
   /** True when there are unsaved mutations since the last save/load. */
   dirty: boolean;
+  /** Skip non-kept regions during playback. */
+  skipSilences: boolean;
+  /** Per-source: which kept region ids are checked for export. When a
+   * source has no entry here, the default is "all kept regions selected". */
+  exportSelectionBySource: Record<string, Set<string>>;
 
   // Sources
   addSource: (source: MediaSource) => void;
@@ -51,6 +56,16 @@ interface QuietcutState {
   redo: () => void;
   resetHistory: () => void;
 
+  // Preview / export selection
+  setSkipSilences: (skip: boolean) => void;
+  /** Toggle one region in the export selection. */
+  toggleExportSelection: (sourceId: string, regionId: string) => void;
+  /** Replace the selection wholesale (e.g. "select all kept"). */
+  setExportSelection: (sourceId: string, ids: Set<string>) => void;
+  /** Read the effective selection: explicit set if present, otherwise all
+   * kept region ids. Lets callers stay agnostic of the default. */
+  effectiveExportSelection: (sourceId: string) => Set<string>;
+
   // Project file
   setProjectPath: (path: string | null) => void;
   setProjectName: (name: string) => void;
@@ -75,6 +90,8 @@ export const useStore = create<QuietcutState>((set, get) => ({
   projectPath: null,
   projectName: 'Untitled',
   dirty: false,
+  skipSilences: false,
+  exportSelectionBySource: {},
 
   addSource: (source) => {
     const { sources } = get();
@@ -212,6 +229,43 @@ export const useStore = create<QuietcutState>((set, get) => ({
 
   resetHistory: () => set({ past: [], future: [] }),
 
+  setSkipSilences: (skipSilences) => set({ skipSilences }),
+
+  toggleExportSelection: (sourceId, regionId) => {
+    const { exportSelectionBySource, regionsBySource } = get();
+    const current = exportSelectionBySource[sourceId];
+    let next: Set<string>;
+    if (!current) {
+      // Start from "all kept" so toggling means "deselect this one".
+      const regions = regionsBySource[sourceId] ?? [];
+      next = new Set(regions.filter((r) => r.kept).map((r) => r.id));
+    } else {
+      next = new Set(current);
+    }
+    if (next.has(regionId)) next.delete(regionId);
+    else next.add(regionId);
+    set({
+      exportSelectionBySource: { ...exportSelectionBySource, [sourceId]: next },
+    });
+  },
+
+  setExportSelection: (sourceId, ids) => {
+    set({
+      exportSelectionBySource: {
+        ...get().exportSelectionBySource,
+        [sourceId]: new Set(ids),
+      },
+    });
+  },
+
+  effectiveExportSelection: (sourceId) => {
+    const { exportSelectionBySource, regionsBySource } = get();
+    const explicit = exportSelectionBySource[sourceId];
+    if (explicit) return explicit;
+    const regions = regionsBySource[sourceId] ?? [];
+    return new Set(regions.filter((r) => r.kept).map((r) => r.id));
+  },
+
   setProjectPath: (projectPath) => set({ projectPath }),
   setProjectName: (projectName) => set({ projectName }),
 
@@ -228,6 +282,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
       projectPath: path,
       projectName: project.name,
       dirty: false,
+      exportSelectionBySource: {},
     });
   },
 
@@ -257,6 +312,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
       projectPath: null,
       projectName: empty.name,
       dirty: false,
+      exportSelectionBySource: {},
     });
   },
 

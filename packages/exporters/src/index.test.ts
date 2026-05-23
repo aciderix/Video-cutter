@@ -2,14 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { MediaSource, Region } from '@quietcut/core';
 import {
   FILTER_COMPLEX_SEGMENT_THRESHOLD,
+  FORMAT_PRESETS,
   buildFFmpegConcatList,
   buildFFmpegSegmentCommands,
   buildFilterComplexExport,
+  buildPerRegionExport,
   buildSegmentedExport,
+  defaultPresetFor,
   exportEDL,
   exportFCPXML,
   exportOTIO,
   exportResolveMarkers,
+  findPreset,
 } from './index.ts';
 import {
   edlFcmLine,
@@ -190,6 +194,101 @@ describe('EDL on NTSC rates', () => {
     const edl = exportEDL({ source: ntscSource, regions, projectName: 'NTSC' });
     expect(edl).toContain('FCM: DROP FRAME');
     expect(edl).toMatch(/\d{2}:\d{2}:\d{2};\d{2}/);
+  });
+});
+
+describe('format presets', () => {
+  it('exposes preset ids that exporter helpers consume', () => {
+    expect(findPreset('mp4-h264')?.videoCodec).toBe('libx264');
+    expect(findPreset('mp3')?.hasVideo).toBe(false);
+    expect(findPreset('bogus')).toBeUndefined();
+  });
+
+  it('picks an audio preset for audio-only sources', () => {
+    expect(defaultPresetFor(false).hasVideo).toBe(false);
+    expect(defaultPresetFor(true).hasVideo).toBe(true);
+  });
+
+  it('every preset declares a codec and extension', () => {
+    for (const p of FORMAT_PRESETS) {
+      expect(p.audioCodec).toBeTruthy();
+      expect(p.extension.startsWith('.')).toBe(true);
+      if (p.hasVideo) expect(p.videoCodec).toBeTruthy();
+    }
+  });
+});
+
+describe('filter_complex export with presets and selection', () => {
+  it('uses preset codecs and extra args', () => {
+    const preset = findPreset('mp4-h265')!;
+    const out = buildFilterComplexExport(ctx, { outputPath: '/tmp/o.mp4', preset });
+    expect(out.args).toContain('libx265');
+    expect(out.args).toContain('hvc1');
+  });
+
+  it('strips video for audio-only presets', () => {
+    const preset = findPreset('mp3')!;
+    const out = buildFilterComplexExport(ctx, { outputPath: '/tmp/o.mp3', preset });
+    expect(out.args).toContain('libmp3lame');
+    // Video map flag must not be emitted.
+    expect(out.args.join(' ')).not.toContain('-map [v]');
+    // Output is audio-only so segment count and duration math stays correct.
+    expect(out.segmentCount).toBe(3);
+  });
+
+  it('restricts to the selected region ids', () => {
+    const selected = new Set(['1', '5']);
+    const out = buildFilterComplexExport(ctx, {
+      outputPath: '/tmp/o.mp4',
+      selectedIds: selected,
+    });
+    expect(out.segmentCount).toBe(2);
+    expect(out.outputDurationS).toBe(5);
+  });
+
+  it('throws when nothing is selected', () => {
+    expect(() =>
+      buildFilterComplexExport(ctx, {
+        outputPath: '/tmp/o.mp4',
+        selectedIds: new Set(),
+      }),
+    ).toThrow(/no segments/);
+  });
+});
+
+describe('buildPerRegionExport', () => {
+  it('produces one ffmpeg invocation per selected region', () => {
+    const preset = findPreset('mp4-h264')!;
+    const plan = buildPerRegionExport(ctx, {
+      outputDir: '/tmp',
+      basename: 'chapter',
+      preset,
+    });
+    expect(plan.segments).toHaveLength(3);
+    expect(plan.segments[0]?.outputPath).toBe('/tmp/chapter_001.mp4');
+    expect(plan.segments[0]?.args).toContain('libx264');
+    expect(plan.totalDurationS).toBe(8);
+  });
+
+  it('honors selectedIds whitelist over kept flag', () => {
+    const plan = buildPerRegionExport(ctx, {
+      outputDir: '/tmp',
+      basename: 'pick',
+      extension: '.mp4',
+      selectedIds: new Set(['1']), // only first kept region
+    });
+    expect(plan.segments).toHaveLength(1);
+    expect(plan.totalDurationS).toBe(2);
+  });
+
+  it('omits video stream for audio-only presets', () => {
+    const plan = buildPerRegionExport(ctx, {
+      outputDir: '/tmp',
+      basename: 'audio',
+      preset: findPreset('wav')!,
+    });
+    expect(plan.segments[0]?.args).toContain('-vn');
+    expect(plan.segments[0]?.outputPath.endsWith('.wav')).toBe(true);
   });
 });
 

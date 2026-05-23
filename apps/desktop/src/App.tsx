@@ -52,6 +52,8 @@ export function App() {
   const projectName = useStore((s) => s.projectName);
   const projectPath = useStore((s) => s.projectPath);
   const dirty = useStore((s) => s.dirty);
+  const skipSilences = useStore((s) => s.skipSilences);
+  const exportSelectionBySource = useStore((s) => s.exportSelectionBySource);
   const store = useStore;
 
   const source = useMemo(
@@ -66,6 +68,14 @@ export function App() {
     () => (currentSourceId ? (peaksBySource[currentSourceId] ?? null) : null),
     [peaksBySource, currentSourceId],
   );
+  /** Selection used by ExportPanel and RegionsList. Falls back to "all kept"
+   * when the user has not explicitly toggled anything yet. */
+  const effectiveSelection = useMemo<Set<string>>(() => {
+    if (!currentSourceId) return new Set<string>();
+    const explicit = exportSelectionBySource[currentSourceId];
+    if (explicit) return explicit;
+    return new Set(regions.filter((r) => r.kept).map((r) => r.id));
+  }, [exportSelectionBySource, currentSourceId, regions]);
 
   const [busy, setBusy] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ index: number; total: number } | null>(null);
@@ -351,6 +361,7 @@ export function App() {
       },
       undo: () => store.getState().undo(),
       redo: () => store.getState().redo(),
+      togglePreview: () => store.getState().setSkipSilences(!store.getState().skipSilences),
     }),
     [regions, currentTime, onSeek, store],
   );
@@ -397,6 +408,25 @@ export function App() {
               busy={busy}
               projectName={projectName}
               playerRef={playerRef}
+              skipSilences={skipSilences}
+              onToggleSkipSilences={() => store.getState().setSkipSilences(!skipSilences)}
+              selectedIds={effectiveSelection}
+              onToggleSelection={(id) =>
+                source && store.getState().toggleExportSelection(source.id, id)
+              }
+              onSelectAllKept={() => {
+                if (!source) return;
+                store
+                  .getState()
+                  .setExportSelection(
+                    source.id,
+                    new Set(regions.filter((r) => r.kept).map((r) => r.id)),
+                  );
+              }}
+              onClearSelection={() => {
+                if (!source) return;
+                store.getState().setExportSelection(source.id, new Set());
+              }}
               onTimeUpdate={(t) => store.getState().setCurrentTime(t)}
               onSeek={onSeek}
               onBoundaryDrag={onBoundaryDrag}
@@ -496,7 +526,7 @@ function Statusbar({
       <span>Removed: {(duration - kept).toFixed(2)}s</span>
       <span>{drops} cuts</span>
       <span className="ml-auto">
-        Space play · J/L skip · K split · D toggle · ⌘Z undo · ⌘⇧Z redo · ←/→ scrub
+        Space play · J/L skip · K split · D toggle · P preview · ⌘Z undo · ⌘⇧Z redo · ←/→ scrub
       </span>
     </footer>
   );
@@ -538,6 +568,12 @@ function SourceView({
   busy,
   projectName,
   playerRef,
+  skipSilences,
+  onToggleSkipSilences,
+  selectedIds,
+  onToggleSelection,
+  onSelectAllKept,
+  onClearSelection,
   onTimeUpdate,
   onSeek,
   onBoundaryDrag,
@@ -552,6 +588,12 @@ function SourceView({
   busy: boolean;
   projectName: string;
   playerRef: React.RefObject<MediaPlayerHandle | null>;
+  skipSilences: boolean;
+  onToggleSkipSilences: () => void;
+  selectedIds: Set<string>;
+  onToggleSelection: (id: string) => void;
+  onSelectAllKept: () => void;
+  onClearSelection: () => void;
   onTimeUpdate: (t: number) => void;
   onSeek: (t: number) => void;
   onBoundaryDrag: (id: string, side: 'start' | 'end', t: number) => void;
@@ -562,7 +604,7 @@ function SourceView({
   const savedSeconds = source.duration - outputDuration(regions);
   return (
     <div className="flex flex-col gap-4 min-h-0">
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between flex-wrap gap-2">
         <div>
           <h2 className="text-lg font-medium">{source.name}</h2>
           <p className="text-sm text-zinc-400">
@@ -571,8 +613,25 @@ function SourceView({
           </p>
           <MediaInfo source={source} />
         </div>
+        <label className="inline-flex items-center gap-2 text-xs text-zinc-300 cursor-pointer select-none">
+          <input
+            type="checkbox"
+            checked={skipSilences}
+            onChange={onToggleSkipSilences}
+            className="h-4 w-4 accent-indigo-500"
+          />
+          <span>
+            Preview cuts <span className="text-zinc-500">(skip silences during playback)</span>
+          </span>
+        </label>
       </div>
-      <MediaPlayer ref={playerRef} source={source} onTimeUpdate={onTimeUpdate} />
+      <MediaPlayer
+        ref={playerRef}
+        source={source}
+        regions={regions}
+        skipSilences={skipSilences}
+        onTimeUpdate={onTimeUpdate}
+      />
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
         <WaveformTimeline
           peaks={peaks}
@@ -585,12 +644,21 @@ function SourceView({
           onRegionClick={onRegionToggle}
         />
       </div>
-      <ExportPanel source={source} regions={regions} projectName={projectName} />
+      <ExportPanel
+        source={source}
+        regions={regions}
+        projectName={projectName}
+        selectedIds={selectedIds}
+      />
       <RegionsList
         regions={regions}
         currentTime={currentTime}
+        selectedIds={selectedIds}
         onSeek={onSeek}
         onToggle={onRegionToggle}
+        onToggleSelection={onToggleSelection}
+        onSelectAllKept={onSelectAllKept}
+        onClearSelection={onClearSelection}
         onMerge={onMerge}
       />
       {busy && <p className="text-sm text-zinc-400">Analyzing…</p>}
@@ -628,71 +696,126 @@ function MediaInfo({ source }: { source: MediaSource }) {
 function RegionsList({
   regions,
   currentTime,
+  selectedIds,
   onSeek,
   onToggle,
+  onToggleSelection,
+  onSelectAllKept,
+  onClearSelection,
   onMerge,
 }: {
   regions: Region[];
   currentTime: number;
+  selectedIds: Set<string>;
   onSeek: (t: number) => void;
   onToggle: (id: string) => void;
+  onToggleSelection: (id: string) => void;
+  onSelectAllKept: () => void;
+  onClearSelection: () => void;
   onMerge: (id: string) => void;
 }) {
   return (
-    <div className="overflow-auto max-h-64 rounded-lg border border-zinc-800">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 bg-zinc-900 text-left text-xs uppercase text-zinc-500">
-          <tr>
-            <th className="px-3 py-2">#</th>
-            <th className="px-3 py-2">Start</th>
-            <th className="px-3 py-2">End</th>
-            <th className="px-3 py-2">Length</th>
-            <th className="px-3 py-2">Kept</th>
-            <th className="px-3 py-2">Source</th>
-            <th className="px-3 py-2"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {regions.map((r, i) => {
-            const active = currentTime >= r.start && currentTime <= r.end;
-            return (
-              <tr
-                key={r.id}
-                className={`border-t border-zinc-800 ${active ? 'bg-zinc-800/60' : ''}`}
+    <div className="rounded-lg border border-zinc-800">
+      <div className="flex items-center justify-between border-b border-zinc-800 px-3 py-2 text-xs">
+        <span className="font-semibold uppercase tracking-wider text-zinc-400">Regions</span>
+        <div className="flex gap-2">
+          <button
+            className="text-zinc-400 hover:text-zinc-200"
+            onClick={onSelectAllKept}
+            title="Select all kept regions for export"
+          >
+            Select all kept
+          </button>
+          <span className="text-zinc-700">·</span>
+          <button
+            className="text-zinc-400 hover:text-zinc-200"
+            onClick={onClearSelection}
+            title="Clear the export selection"
+          >
+            Deselect all
+          </button>
+        </div>
+      </div>
+      <div className="overflow-auto max-h-64">
+        <table className="w-full text-sm">
+          <thead className="sticky top-0 bg-zinc-900 text-left text-xs uppercase text-zinc-500">
+            <tr>
+              <th className="px-3 py-2">#</th>
+              <th className="px-3 py-2">Start</th>
+              <th className="px-3 py-2">End</th>
+              <th className="px-3 py-2">Length</th>
+              <th
+                className="px-3 py-2"
+                title="Keep this region in the edit (J/L navigates kept regions)"
               >
-                <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
-                <td className="px-3 py-1.5">
-                  <button className="hover:text-indigo-300" onClick={() => onSeek(r.start)}>
-                    {r.start.toFixed(2)}
-                  </button>
-                </td>
-                <td className="px-3 py-1.5">{r.end.toFixed(2)}</td>
-                <td className="px-3 py-1.5 text-zinc-400">{(r.end - r.start).toFixed(2)}s</td>
-                <td className="px-3 py-1.5">
-                  <input
-                    type="checkbox"
-                    checked={r.kept}
-                    onChange={() => onToggle(r.id)}
-                    aria-label={`Keep region ${i + 1}`}
-                  />
-                </td>
-                <td className="px-3 py-1.5 text-zinc-500">{r.source}</td>
-                <td className="px-3 py-1.5 text-right">
-                  {i < regions.length - 1 && (
-                    <button
-                      className="text-xs text-zinc-400 hover:text-zinc-200"
-                      onClick={() => onMerge(r.id)}
-                      title="Merge with next region"
-                    >
-                      merge →
+                Kept
+              </th>
+              <th className="px-3 py-2" title="Include this kept region in the export">
+                Export
+              </th>
+              <th className="px-3 py-2">Source</th>
+              <th className="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {regions.map((r, i) => {
+              const active = currentTime >= r.start && currentTime <= r.end;
+              const selected = selectedIds.has(r.id);
+              return (
+                <tr
+                  key={r.id}
+                  className={`border-t border-zinc-800 ${
+                    active ? 'bg-indigo-600/15' : !r.kept ? 'opacity-60' : ''
+                  }`}
+                >
+                  <td className="px-3 py-1.5 text-zinc-500">{i + 1}</td>
+                  <td className="px-3 py-1.5">
+                    <button className="hover:text-indigo-300" onClick={() => onSeek(r.start)}>
+                      {r.start.toFixed(2)}
                     </button>
-                  )}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  </td>
+                  <td className="px-3 py-1.5">{r.end.toFixed(2)}</td>
+                  <td className="px-3 py-1.5 text-zinc-400">{(r.end - r.start).toFixed(2)}s</td>
+                  <td className="px-3 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={r.kept}
+                      onChange={() => onToggle(r.id)}
+                      aria-label={`Keep region ${i + 1}`}
+                      className="h-4 w-4 accent-indigo-500"
+                    />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={!r.kept}
+                      onChange={() => onToggleSelection(r.id)}
+                      aria-label={`Include region ${i + 1} in export`}
+                      className="h-4 w-4 accent-emerald-500 disabled:opacity-30"
+                      title={
+                        r.kept ? 'Include in the next export' : 'Mark this region as kept first'
+                      }
+                    />
+                  </td>
+                  <td className="px-3 py-1.5 text-zinc-500">{r.source}</td>
+                  <td className="px-3 py-1.5 text-right">
+                    {i < regions.length - 1 && (
+                      <button
+                        className="text-xs text-zinc-400 hover:text-zinc-200"
+                        onClick={() => onMerge(r.id)}
+                        title="Merge with next region"
+                      >
+                        merge →
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

@@ -128,6 +128,12 @@ export async function pathExists(path: string): Promise<boolean> {
   return await invoke<boolean>('path_exists', { path });
 }
 
+export async function pickDirectory(): Promise<string | null> {
+  const result = await open({ directory: true, multiple: false });
+  if (!result) return null;
+  return Array.isArray(result) ? (result[0] ?? null) : result;
+}
+
 export async function pickSingleMediaFile(): Promise<string | null> {
   const result = await open({
     multiple: false,

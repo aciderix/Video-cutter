@@ -1,6 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import type { MediaSource } from '@quietcut/core';
+import type { MediaSource, Region } from '@quietcut/core';
+import { regionAtTime } from '@quietcut/core';
 
 export interface MediaPlayerHandle {
   play: () => void;
@@ -12,17 +13,26 @@ export interface MediaPlayerHandle {
 
 interface Props {
   source: MediaSource;
+  regions: Region[];
+  /** When true, the player auto-seeks past non-kept regions during playback. */
+  skipSilences: boolean;
   onTimeUpdate?: (t: number) => void;
 }
 
 export const MediaPlayer = forwardRef<MediaPlayerHandle, Props>(function MediaPlayer(
-  { source, onTimeUpdate },
+  { source, regions, skipSilences, onTimeUpdate },
   ref,
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const elRef = (): HTMLMediaElement | null => videoRef.current ?? audioRef.current;
   const url = convertFileSrc(source.path);
+  // Latest regions stashed in a ref so the timeupdate handler can read them
+  // without re-subscribing on every change.
+  const regionsRef = useRef(regions);
+  regionsRef.current = regions;
+  const skipRef = useRef(skipSilences);
+  skipRef.current = skipSilences;
 
   useImperativeHandle(
     ref,
@@ -49,8 +59,23 @@ export const MediaPlayer = forwardRef<MediaPlayerHandle, Props>(function MediaPl
 
   useEffect(() => {
     const el = elRef();
-    if (!el || !onTimeUpdate) return;
-    const handler = () => onTimeUpdate(el.currentTime);
+    if (!el) return;
+    const handler = () => {
+      const t = el.currentTime;
+      if (skipRef.current) {
+        const r = regionAtTime(regionsRef.current, t);
+        if (r && !r.kept) {
+          // Jump to the end of the silence (= start of the next region).
+          // Add a small epsilon so we don't re-trigger on the same boundary.
+          const target = Math.min(el.duration || r.end, r.end + 0.001);
+          if (target > t) {
+            el.currentTime = target;
+            return; // onTimeUpdate fires again after the seek
+          }
+        }
+      }
+      onTimeUpdate?.(t);
+    };
     el.addEventListener('timeupdate', handler);
     return () => el.removeEventListener('timeupdate', handler);
   }, [onTimeUpdate, source.path]);
