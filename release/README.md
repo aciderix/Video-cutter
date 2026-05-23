@@ -1,8 +1,8 @@
 # Quietcut — pre-release artifacts
 
-> ⚠️ Built from `claude/loving-ptolemy-x0AY6` after Phase 7. Not signed, not
-> notarized, not stable. For end-user binaries, prefer GitHub Releases once
-> the project ships a v0.1.
+> ⚠️ Built from `claude/loving-ptolemy-x0AY6` at v0.2.0 (post-audit fixes).
+> Not signed, not notarized. For end-user binaries, prefer GitHub Releases
+> once the project ships a tagged version.
 
 ## Layout
 
@@ -13,11 +13,11 @@ release/
 │   └── mobile/                           Vite-built SPA used by Capacitor (preview-only)
 ├── desktop/
 │   └── linux-x64/
-│       ├── quietcut                      9.4 MB stripped LTO binary
-│       └── quietcut-0.1.0_amd64.deb      3.2 MB Debian/Ubuntu package
+│       ├── quietcut                      9.5 MB stripped LTO binary
+│       └── quietcut-0.2.0_amd64.deb      3.2 MB Debian/Ubuntu package
 └── mobile/
     └── android/
-        └── quietcut-0.1.0-debug.apk      3.7 MB Capacitor debug APK (unsigned)
+        └── quietcut-0.2.0-debug.apk      3.8 MB Capacitor debug APK (unsigned)
 ```
 
 The Linux `.AppImage` (75 MB, bundles GTK / libsoup / webkit) and a signed
