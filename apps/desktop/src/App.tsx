@@ -368,7 +368,7 @@ export function App() {
   useShortcuts(shortcuts);
 
   return (
-    <div className="flex h-full flex-col bg-zinc-950 text-zinc-100">
+    <div className="flex h-full flex-col bg-gradient-to-b from-zinc-950 via-zinc-950 to-zinc-900 text-zinc-100">
       <Header
         canUndo={past.length > 0}
         canRedo={future.length > 0}

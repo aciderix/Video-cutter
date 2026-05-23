@@ -1,6 +1,6 @@
 [package]
 name = "quietcut"
-version = "0.2.0"
+version = "0.3.0"
 description = "Quietcut — ultra-fast silence remover"
 authors = ["Quietcut contributors"]
 edition = "2021"

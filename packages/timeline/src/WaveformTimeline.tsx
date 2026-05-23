@@ -14,7 +14,18 @@ export interface WaveformTimelineProps {
   height?: number;
 }
 
-const HANDLE_PX = 8;
+/**
+ * Hit zone for the boundary drag handles. We bump it for coarse pointers
+ * (touch) to match the 44 px iOS / 48 dp Android guidance, while keeping
+ * desktop precise.
+ */
+const HANDLE_PX_DESKTOP = 8;
+const HANDLE_PX_TOUCH = 24;
+const isCoarsePointer = (): boolean =>
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(pointer: coarse)').matches;
+const handlePx = (): number => (isCoarsePointer() ? HANDLE_PX_TOUCH : HANDLE_PX_DESKTOP);
 
 export function WaveformTimeline({
   peaks,
@@ -126,10 +137,10 @@ export function WaveformTimeline({
     const pxPerSec = rect.width / duration;
     for (let i = 0; i < regions.length; i++) {
       const r = regions[i]!;
-      if (i > 0 && Math.abs(r.start * pxPerSec - px) <= HANDLE_PX) {
+      if (i > 0 && Math.abs(r.start * pxPerSec - px) <= handlePx()) {
         return { regionId: r.id, side: 'start' };
       }
-      if (i < regions.length - 1 && Math.abs(r.end * pxPerSec - px) <= HANDLE_PX) {
+      if (i < regions.length - 1 && Math.abs(r.end * pxPerSec - px) <= handlePx()) {
         return { regionId: r.id, side: 'end' };
       }
     }

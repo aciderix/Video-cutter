@@ -4,6 +4,40 @@ All notable changes to Quietcut are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — Preview cuts, export selection, multi-format
+
+### Added
+
+- **Preview cuts**: a checkbox in the source-view header (P shortcut on
+  desktop) makes the player auto-seek past non-kept regions during
+  playback. Lets you audition the edit without exporting first.
+- **Export selection** (separate from "kept"): the regions table grew an
+  emerald "Export" checkbox per row. Defaults to "all kept regions
+  selected", overrideable per region. "Select all kept" / "Deselect
+  all" buttons in the table header. The export panel reads the
+  selection and shows N / total + selected duration.
+- **Export per segment**: new button writes one file per selected region
+  into a user-picked directory (e.g. podcast chapters). Reuses the
+  existing per-segment FFmpeg builder.
+- **Multi-format export**: 10 presets — MP4 (H.264, H.265), WebM/VP9,
+  MOV/ProRes, MKV, MP3, AAC/M4A, Opus, WAV, FLAC. Format select sits
+  next to the existing loudness control. Audio-only presets drop the
+  video stream automatically.
+- **Mobile redesign**: gradient background, sticky bottom action bar with
+  safe-area padding, RegionsList with bigger 36 px chips for Kept and
+  Export toggles, collapsible Detection panel, header version chip,
+  bigger touch targets in the waveform timeline (44 px hit zone on
+  coarse pointers).
+- **Mobile preview cuts** + audio-only WAV export (no native FFmpeg
+  required) wired up to the same selection.
+
+### Changed
+
+- WaveformTimeline boundary handle hit zone widens to 24 px on coarse
+  pointers (touch) and stays at 8 px on desktop.
+- ExportPanel layout reorganized for clarity: Format + Loudness on one
+  row, the preset description tucked underneath.
+
 ## [0.2.0] — Audit fixes
 
 ### Fixed
