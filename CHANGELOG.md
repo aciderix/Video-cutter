@@ -4,6 +4,39 @@ All notable changes to Quietcut are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] — Timeline zoom + pan + tap-to-select
+
+### Added
+
+- **Timeline zoom + pan** on desktop and mobile.
+  - Pinch zoom on touch screens; Ctrl/Cmd + wheel on desktop. Zoom
+    anchors on the cursor / pinch midpoint so you stay focused on
+    what matters.
+  - Drag the timeline body to pan when zoomed in (gesture survives
+    moving off-canvas thanks to global pointer listeners).
+  - Plain wheel = horizontal pan on desktop.
+  - `+` / `−` keyboard shortcuts when the canvas has focus.
+  - Mini-scrollbar overlay at the bottom shows where the viewport
+    sits inside the full clip.
+- **Tap-to-select-segment**. A single click on a kept region's body
+  now seeks to it AND toggles its export selection. Existing checkbox
+  workflow in the regions table still works — both stay in sync.
+- **Transport bar** above the timeline (desktop + mobile).
+  - Play/Pause button with a clear icon.
+  - `MM:SS.mmm / MM:SS.mmm` digital clock that tracks the playhead.
+  - Zoom −/+/Fit buttons on both platforms (Center button on desktop
+    when zoomed, to snap the viewport around the playhead).
+- Timeline now exports `clampViewport`, `MIN_ZOOM`, `MAX_ZOOM` for
+  consumers that want to validate viewport math.
+
+### Changed
+
+- `onRegionClick` renamed to `onRegionKeptToggle` (double-tap) and
+  joined by the new `onRegionExportToggle` (single-tap on a kept
+  region body).
+- Waveform peaks are now sliced to the visible viewport before
+  downsampling — keeps redraw cost bounded as you zoom in.
+
 ## [0.3.0] — Preview cuts, export selection, multi-format
 
 ### Added

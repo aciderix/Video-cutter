@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button, Slider } from '@quietcut/ui';
-import { WaveformTimeline } from '@quietcut/timeline';
+import { WaveformTimeline, clampViewport, MAX_ZOOM, MIN_ZOOM } from '@quietcut/timeline';
 import {
   DEFAULT_DETECTION,
   QUIETCUT_VERSION,
@@ -47,10 +47,14 @@ export function App() {
   const [skipSilences, setSkipSilences] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string> | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [zoom, setZoom] = useState(1);
+  const [viewOffset, setViewOffset] = useState(0);
+  const [playing, setPlaying] = useState(false);
   const samplesRef = useRef<Float32Array | null>(null);
   const sampleRateRef = useRef<number>(48_000);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const player = (): HTMLMediaElement | null => videoRef.current ?? audioRef.current;
 
   // Revoke any leftover object URL on unmount.
   useEffect(() => {
@@ -131,6 +135,8 @@ export function App() {
         setPeaks(wave);
         setCurrentTime(0);
         setSelectedIds(null); // reset to "all kept" default
+        setZoom(1);
+        setViewOffset(0);
 
         if (objectUrl) URL.revokeObjectURL(objectUrl);
         setObjectUrl(URL.createObjectURL(file));
@@ -152,6 +158,47 @@ export function App() {
     setRegions(buildRegionsFromSilences(source.duration, intervals, settings));
     setSelectedIds(null);
   }, [settings, source]);
+
+  // Track playing state for the bottom transport bar.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setPlaying(!!player() && !player()!.paused);
+    }, 200);
+    return () => clearInterval(interval);
+  }, []);
+
+  const togglePlay = () => {
+    const el = player();
+    if (!el) return;
+    if (el.paused) void el.play();
+    else el.pause();
+  };
+
+  const onViewportChange = (newZoom: number, newOffset: number) => {
+    if (!source) return;
+    const clamped = clampViewport(newZoom, newOffset, source.duration);
+    setZoom(clamped.zoom);
+    setViewOffset(clamped.offset);
+  };
+
+  const zoomIn = () => {
+    if (!source) return;
+    const next = Math.min(MAX_ZOOM, zoom * 1.6);
+    const span = source.duration / next;
+    setZoom(next);
+    setViewOffset(Math.max(0, Math.min(source.duration - span, currentTime - span / 2)));
+  };
+  const zoomOut = () => {
+    if (!source) return;
+    const next = Math.max(MIN_ZOOM, zoom / 1.6);
+    const span = source.duration / next;
+    setZoom(next);
+    setViewOffset(Math.max(0, Math.min(source.duration - span, viewOffset)));
+  };
+  const zoomFit = () => {
+    setZoom(1);
+    setViewOffset(0);
+  };
 
   const toggleRegionSelection = (id: string) => {
     const next = new Set(effectiveSelected);
@@ -346,16 +393,73 @@ export function App() {
                 className="h-5 w-5 accent-indigo-500"
               />
             </label>
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 space-y-2">
+              <div className="flex items-center gap-2 px-1">
+                <button
+                  type="button"
+                  onClick={togglePlay}
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 text-white shadow shadow-indigo-950 active:bg-indigo-500"
+                  aria-label={playing ? 'Pause' : 'Play'}
+                >
+                  {playing ? (
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor">
+                      <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
+                    </svg>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-5 w-5 translate-x-[1px]"
+                      fill="currentColor"
+                    >
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  )}
+                </button>
+                <code className="text-xs text-zinc-400 font-mono tabular-nums">
+                  {fmtTime(currentTime)} / {fmtTime(source.duration)}
+                </code>
+                <div className="ml-auto flex items-center gap-1 text-xs text-zinc-400">
+                  <span className="font-mono tabular-nums">×{zoom.toFixed(1)}</span>
+                  <button
+                    onClick={zoomOut}
+                    className="h-9 w-9 rounded bg-zinc-800 active:bg-zinc-700"
+                    aria-label="Zoom out"
+                  >
+                    −
+                  </button>
+                  <button
+                    onClick={zoomIn}
+                    className="h-9 w-9 rounded bg-zinc-800 active:bg-zinc-700"
+                    aria-label="Zoom in"
+                  >
+                    +
+                  </button>
+                  <button
+                    onClick={zoomFit}
+                    className="h-9 px-2 rounded bg-zinc-800 text-[10px] active:bg-zinc-700"
+                    aria-label="Fit zoom"
+                  >
+                    Fit
+                  </button>
+                </div>
+              </div>
               <WaveformTimeline
                 peaks={peaks}
                 regions={regions}
                 duration={source.duration}
                 currentTime={currentTime}
+                zoom={zoom}
+                offset={viewOffset}
+                onZoomChange={onViewportChange}
                 onSeek={onSeek}
-                onRegionClick={onRegionKeptToggle}
+                onRegionKeptToggle={onRegionKeptToggle}
+                onRegionExportToggle={toggleRegionSelection}
+                selectedExportIds={effectiveSelected}
                 height={110}
               />
+              <p className="px-1 text-[10px] text-zinc-500">
+                Tap a kept segment to add/remove it from the export. Pinch to zoom, drag to pan.
+              </p>
             </div>
             <div className="rounded-lg border border-zinc-800 bg-zinc-900">
               <button

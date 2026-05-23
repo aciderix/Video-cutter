@@ -35,7 +35,9 @@ import {
 } from './bridge.ts';
 import { MediaPlayer, type MediaPlayerHandle } from './MediaPlayer.tsx';
 import { ExportPanel } from './ExportPanel.tsx';
+import { TransportBar } from './TransportBar.tsx';
 import { useShortcuts } from './shortcuts.ts';
+import { clampViewport, MAX_ZOOM, MIN_ZOOM } from '@quietcut/timeline';
 
 let idCounter = 0;
 const nextId = () => `m${Date.now().toString(36)}-${idCounter++}`;
@@ -81,6 +83,46 @@ export function App() {
   const [batchProgress, setBatchProgress] = useState<{ index: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const playerRef = useRef<MediaPlayerHandle>(null);
+  const [zoom, setZoom] = useState(1);
+  const [viewOffset, setViewOffset] = useState(0);
+  useEffect(() => {
+    // Reset viewport when switching sources.
+    setZoom(1);
+    setViewOffset(0);
+  }, [currentSourceId]);
+  const onViewportChange = useCallback(
+    (newZoom: number, newOffset: number) => {
+      if (!source) return;
+      const clamped = clampViewport(newZoom, newOffset, source.duration);
+      setZoom(clamped.zoom);
+      setViewOffset(clamped.offset);
+    },
+    [source],
+  );
+  const zoomIn = useCallback(() => {
+    if (!source) return;
+    const next = Math.min(MAX_ZOOM, zoom * 1.5);
+    const span = source.duration / next;
+    const focus = currentTime;
+    setZoom(next);
+    setViewOffset(Math.max(0, Math.min(source.duration - span, focus - span / 2)));
+  }, [zoom, source, currentTime]);
+  const zoomOut = useCallback(() => {
+    if (!source) return;
+    const next = Math.max(MIN_ZOOM, zoom / 1.5);
+    const span = source.duration / next;
+    setZoom(next);
+    setViewOffset(Math.max(0, Math.min(source.duration - span, viewOffset)));
+  }, [zoom, source, viewOffset]);
+  const zoomFit = useCallback(() => {
+    setZoom(1);
+    setViewOffset(0);
+  }, []);
+  const centerOnPlayhead = useCallback(() => {
+    if (!source) return;
+    const span = source.duration / zoom;
+    setViewOffset(Math.max(0, Math.min(source.duration - span, currentTime - span / 2)));
+  }, [source, zoom, currentTime]);
   // Snapshot of regions captured at the start of a boundary drag. Promoted
   // to the history stack on pointerup.
   const dragSnapshotRef = useRef<Region[] | null>(null);
@@ -433,6 +475,13 @@ export function App() {
               onBoundaryRelease={onBoundaryRelease}
               onRegionToggle={onRegionToggle}
               onMerge={(id) => store.getState().setRegions(mergeRight(regions, id))}
+              zoom={zoom}
+              viewOffset={viewOffset}
+              onViewportChange={onViewportChange}
+              onZoomIn={zoomIn}
+              onZoomOut={zoomOut}
+              onZoomFit={zoomFit}
+              onCenterPlayhead={centerOnPlayhead}
             />
           )}
           {error && (
@@ -580,6 +629,13 @@ function SourceView({
   onBoundaryRelease,
   onRegionToggle,
   onMerge,
+  zoom,
+  viewOffset,
+  onViewportChange,
+  onZoomIn,
+  onZoomOut,
+  onZoomFit,
+  onCenterPlayhead,
 }: {
   source: MediaSource;
   regions: Region[];
@@ -600,6 +656,13 @@ function SourceView({
   onBoundaryRelease: () => void;
   onRegionToggle: (id: string) => void;
   onMerge: (id: string) => void;
+  zoom: number;
+  viewOffset: number;
+  onViewportChange: (zoom: number, offset: number) => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomFit: () => void;
+  onCenterPlayhead: () => void;
 }) {
   const savedSeconds = source.duration - outputDuration(regions);
   return (
@@ -632,16 +695,31 @@ function SourceView({
         skipSilences={skipSilences}
         onTimeUpdate={onTimeUpdate}
       />
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2">
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-2 space-y-2">
+        <TransportBar
+          player={playerRef}
+          currentTime={currentTime}
+          duration={source.duration}
+          zoom={zoom}
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+          onZoomFit={onZoomFit}
+          onJumpToPlayhead={onCenterPlayhead}
+        />
         <WaveformTimeline
           peaks={peaks}
           regions={regions}
           duration={source.duration}
           currentTime={currentTime}
+          zoom={zoom}
+          offset={viewOffset}
+          onZoomChange={onViewportChange}
           onSeek={onSeek}
           onBoundaryDrag={onBoundaryDrag}
           onBoundaryDragEnd={onBoundaryRelease}
-          onRegionClick={onRegionToggle}
+          onRegionKeptToggle={onRegionToggle}
+          onRegionExportToggle={onToggleSelection}
+          selectedExportIds={selectedIds}
         />
       </div>
       <ExportPanel
