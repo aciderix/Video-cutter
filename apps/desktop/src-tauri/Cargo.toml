@@ -25,6 +25,7 @@ tokio = { version = "1", features = ["process", "io-util", "rt-multi-thread", "m
 which = "6"
 symphonia = { version = "0.5", features = ["mp3", "aac", "isomp4", "wav", "flac", "ogg", "vorbis", "mkv"] }
 regex = "1"
+rustfft = "6"
 
 [profile.release]
 opt-level = 3

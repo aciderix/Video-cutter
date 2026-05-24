@@ -1,3 +1,4 @@
+mod audio_sync;
 mod commands;
 mod error;
 mod export;
