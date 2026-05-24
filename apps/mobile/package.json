@@ -25,6 +25,7 @@
     "@quietcut/exporters": "workspace:*",
     "@quietcut/timeline": "workspace:*",
     "@quietcut/ui": "workspace:*",
+    "lucide-react": "^0.469.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "zustand": "^5.0.2"
