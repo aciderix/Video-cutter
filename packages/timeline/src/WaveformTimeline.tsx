@@ -101,10 +101,14 @@ export function WaveformTimeline({
 
   const safeZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
   const viewSpan = duration / safeZoom;
-  // In centered mode the viewport tracks the playhead so the timeline slides
-  // under the fixed playhead line. In free mode we honour the caller's offset.
+  // When the whole timeline already fits in the viewport there's nothing to
+  // slide under a fixed playhead — fall back to a free-mode playhead that
+  // tracks the actual currentTime, otherwise the cursor looks frozen and
+  // dragging reads as a reversed scrub.
+  const fullyVisible = duration > 0 && viewSpan >= duration - 1e-3;
+  const effectiveCentered = playheadMode === 'centered' && !fullyVisible;
   const computedOffset =
-    playheadMode === 'centered' && duration > 0
+    effectiveCentered
       ? clampOffset(currentTime - viewSpan / 2, duration, viewSpan)
       : clampOffset(offset, duration, viewSpan);
   const safeOffset = computedOffset;
@@ -243,7 +247,7 @@ export function WaveformTimeline({
 
     if (duration > 0) {
       const px =
-        playheadMode === 'centered'
+        effectiveCentered
           ? cssWidth / 2
           : currentTime >= safeOffset && currentTime <= viewEnd
             ? ((currentTime - safeOffset) / viewSpan) * cssWidth
@@ -275,7 +279,7 @@ export function WaveformTimeline({
       ctx.fillStyle = 'rgba(165, 180, 252, 0.7)';
       ctx.fillRect(tx, trackY, Math.max(8, tw), 3);
     }
-  }, [currentTime, duration, safeZoom, safeOffset, viewSpan, viewEnd, playheadMode]);
+  }, [currentTime, duration, safeZoom, safeOffset, viewSpan, viewEnd, effectiveCentered]);
 
   const hitTestBoundary = (clientX: number): { regionId: string; side: 'start' | 'end' } | null => {
     const canvas = canvasRef.current;
@@ -319,7 +323,7 @@ export function WaveformTimeline({
         const distance = Math.abs(pts[0]!.x - pts[1]!.x);
         if (!gesture || gesture.kind !== 'pinch') {
           const mid = (pts[0]!.x + pts[1]!.x) / 2;
-          const anchorTime = playheadMode === 'centered' ? currentTime : pxToTime(mid);
+          const anchorTime = effectiveCentered ? currentTime : pxToTime(mid);
           gestureRef.current = {
             kind: 'pinch',
             startDistance: distance || 1,
@@ -336,10 +340,10 @@ export function WaveformTimeline({
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         const midX = (pts[0]!.x + pts[1]!.x) / 2;
-        const midRatio = playheadMode === 'centered' ? 0.5 : (midX - rect.left) / rect.width;
+        const midRatio = effectiveCentered ? 0.5 : (midX - rect.left) / rect.width;
         const newViewSpan = duration / newZoom;
         const newOffset =
-          playheadMode === 'centered'
+          effectiveCentered
             ? 0 // centered mode recomputes offset on each render
             : Math.max(
                 0,
@@ -361,10 +365,14 @@ export function WaveformTimeline({
         if (!canvas) return;
         const rect = canvas.getBoundingClientRect();
         const dt = (dxPx / rect.width) * viewSpan;
-        if (playheadMode === 'centered' && onSeek) {
+        if (effectiveCentered && onSeek) {
           // Dragging the waveform under the fixed playhead = scrubbing.
           const target = Math.max(0, Math.min(duration, gesture.startCurrentTime - dt));
           onSeek(target);
+        } else if (playheadMode === 'centered' && onSeek) {
+          // Fully-visible centered fallback: nothing to pan, so scrub the
+          // playhead directly to where the finger is.
+          onSeek(pxToTime(e.clientX));
         } else if (onZoomChange) {
           const next = Math.max(0, Math.min(duration - viewSpan, gesture.startOffset - dt));
           onZoomChange(safeZoom, next);
@@ -416,6 +424,7 @@ export function WaveformTimeline({
     safeZoom,
     currentTime,
     playheadMode,
+    effectiveCentered,
   ]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -459,7 +468,7 @@ export function WaveformTimeline({
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (gestureRef.current) return;
     if (hitTestBoundary(e.clientX)) setHoverCursor('col-resize');
-    else if (playheadMode === 'centered') setHoverCursor('grab');
+    else if (effectiveCentered) setHoverCursor('grab');
     else setHoverCursor(safeZoom > 1 ? 'grab' : 'pointer');
   };
 
@@ -471,9 +480,10 @@ export function WaveformTimeline({
     }
     if (hitTestBoundary(e.clientX)) return;
     const t = pxToTime(e.clientX);
-    // Free mode: tap seeks. Centered mode: the seek is handled by the drag
-    // gesture, so a tap acts purely as the kept-toggle.
-    if (playheadMode !== 'centered') onSeek?.(t);
+    // Free mode (incl. centered fallback at full visibility): tap seeks.
+    // Centered mode with a zoomed-in viewport: drag handles the seek, so a
+    // tap acts purely as the kept-toggle.
+    if (!effectiveCentered) onSeek?.(t);
     const region = regionAtClient(e.clientX);
     if (region && onRegionKeptToggle) {
       onRegionKeptToggle(region.id);

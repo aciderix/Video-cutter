@@ -763,7 +763,7 @@ export function App() {
               <TabButton
                 id="sync"
                 icon={<Layers size={14} />}
-                label={`Sync${overlays.length ? ` (${overlays.length})` : ''}`}
+                label={`Tracks${overlays.length ? ` (${overlays.length})` : ''}`}
                 active={activeTab}
                 set={setActiveTab}
               />
