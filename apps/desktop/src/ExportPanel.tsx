@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
+import { Download, Files, Square } from 'lucide-react';
 import { Button } from '@quietcut/ui';
 import type { CleanAudioOverlay, MediaSource, Region } from '@quietcut/core';
 import { LOUDNESS_PRESETS, loudnessFilterArg } from '@quietcut/core';
@@ -295,22 +296,38 @@ export function ExportPanel({ source, regions, projectName, selectedIds, overlay
         </div>
         <div className="flex gap-2 flex-wrap">
           {busy && activeJobId && (
-            <Button variant="danger" size="sm" onClick={cancel}>
-              Cancel
+            <Button variant="danger" size="sm" onClick={cancel} className="gap-1.5">
+              <Square size={12} fill="currentColor" /> Cancel
             </Button>
           )}
-          <Button onClick={exportEdit} disabled={busy || selectedCount === 0}>
-            {busy
-              ? `Exporting… ${progress?.percent.toFixed(0) ?? 0}%`
-              : `Export single ${preset.extension.slice(1).toUpperCase()}`}
+          <Button
+            onClick={exportEdit}
+            disabled={busy || selectedCount === 0}
+            className="relative overflow-hidden bg-white text-zinc-950 hover:bg-zinc-200 disabled:bg-zinc-200 disabled:text-zinc-500 gap-1.5 font-semibold"
+          >
+            {busy && (
+              <div className="absolute inset-0 bg-indigo-500/20">
+                <div
+                  className="h-full bg-indigo-500/70 transition-all duration-300"
+                  style={{ width: `${progress?.percent ?? 0}%` }}
+                />
+              </div>
+            )}
+            <span className="relative z-10 inline-flex items-center gap-1.5">
+              <Download size={14} />
+              {busy
+                ? `Exporting ${progress?.percent.toFixed(0) ?? 0}%`
+                : `Export single ${preset.extension.slice(1).toUpperCase()}`}
+            </span>
           </Button>
           <Button
             variant="secondary"
             onClick={exportPerRegion}
             disabled={busy || selectedCount === 0}
             title="One file per selected region"
+            className="gap-1.5"
           >
-            Export per segment ({selectedCount})
+            <Files size={14} /> Per segment ({selectedCount})
           </Button>
         </div>
       </div>

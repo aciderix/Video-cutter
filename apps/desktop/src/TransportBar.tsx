@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button } from '@quietcut/ui';
+import { Pause, Play, Crosshair, ZoomIn, ZoomOut } from 'lucide-react';
 import type { MediaPlayerHandle } from './MediaPlayer.tsx';
 
 interface Props {
@@ -14,10 +14,11 @@ interface Props {
 }
 
 /**
- * Compact transport bar above the timeline. Play/pause + a tiny digital
- * clock + zoom controls. Polls the player every 200 ms to reflect the
- * paused state (HTMLMediaElement doesn't fire a 'paused' event after
- * a seek, so listening to that alone misses cases).
+ * Compact transport bar above the timeline. Mirrors the mobile style:
+ * white round play button on the left, mono clock next to it, then a
+ * zoom pill (− / Fit / +) on the right. The play-state poll runs every
+ * 200 ms — HTMLMediaElement doesn't fire a discrete event after a seek,
+ * so listening to play/pause alone misses some transitions.
  */
 export function TransportBar({
   player,
@@ -41,37 +42,57 @@ export function TransportBar({
   const toggle = () => player.current?.toggle();
 
   return (
-    <div className="flex items-center gap-2 px-1">
+    <div className="flex items-center gap-3 px-1">
       <button
         type="button"
         onClick={toggle}
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-indigo-600 text-white shadow shadow-indigo-950 hover:bg-indigo-500 active:bg-indigo-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400"
+        className="flex h-10 w-10 items-center justify-center rounded-full bg-white text-indigo-950 shadow-md shadow-black/30 hover:bg-zinc-200 active:bg-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-400 transition-colors"
         aria-label={playing ? 'Pause' : 'Play'}
       >
         {playing ? (
-          <PauseIcon className="h-4 w-4" />
+          <Pause size={18} fill="currentColor" />
         ) : (
-          <PlayIcon className="h-4 w-4 translate-x-[1px]" />
+          <Play size={18} fill="currentColor" className="ml-[1px]" />
         )}
       </button>
-      <code className="text-xs text-zinc-400 font-mono tabular-nums">
-        {formatTime(currentTime)} / {formatTime(duration)}
-      </code>
-      <div className="ml-auto flex items-center gap-1.5 text-xs text-zinc-400">
-        <span className="font-mono tabular-nums">×{zoom.toFixed(1)}</span>
-        <Button variant="ghost" size="sm" onClick={onZoomOut} aria-label="Zoom out">
-          −
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onZoomIn} aria-label="Zoom in">
-          +
-        </Button>
-        <Button variant="ghost" size="sm" onClick={onZoomFit} aria-label="Fit zoom to clip">
-          Fit
-        </Button>
+      <div className="flex flex-col leading-none">
+        <span className="font-mono text-sm tabular-nums text-zinc-100">
+          {formatTime(currentTime)}
+        </span>
+        <span className="font-mono text-[10px] text-zinc-500 mt-0.5">/ {formatTime(duration)}</span>
+      </div>
+
+      <div className="ml-auto flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900 p-1">
+        <button
+          onClick={onZoomOut}
+          className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-200 active:text-zinc-100 rounded-full"
+          aria-label="Zoom out"
+        >
+          <ZoomOut size={14} />
+        </button>
+        <button
+          onClick={onZoomFit}
+          className="px-2 h-7 text-[10px] font-semibold uppercase tracking-wider text-zinc-300 hover:text-white"
+          aria-label="Fit zoom to clip"
+        >
+          ×{zoom.toFixed(1)}
+        </button>
+        <button
+          onClick={onZoomIn}
+          className="w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-200 active:text-zinc-100 rounded-full"
+          aria-label="Zoom in"
+        >
+          <ZoomIn size={14} />
+        </button>
         {onJumpToPlayhead && zoom > 1 && (
-          <Button variant="ghost" size="sm" onClick={onJumpToPlayhead}>
-            Center
-          </Button>
+          <button
+            onClick={onJumpToPlayhead}
+            className="ml-1 w-7 h-7 flex items-center justify-center text-zinc-400 hover:text-zinc-200 rounded-full"
+            aria-label="Center on playhead"
+            title="Center on playhead"
+          >
+            <Crosshair size={14} />
+          </button>
         )}
       </div>
     </div>
@@ -82,22 +103,5 @@ function formatTime(t: number): string {
   if (!isFinite(t) || t < 0) return '0:00.000';
   const m = Math.floor(t / 60);
   const s = t - m * 60;
-  const padded = s.toFixed(3).padStart(6, '0');
-  return `${m}:${padded}`;
-}
-
-function PlayIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
-      <path d="M8 5v14l11-7z" />
-    </svg>
-  );
-}
-
-function PauseIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} fill="currentColor" aria-hidden="true">
-      <path d="M6 5h4v14H6zM14 5h4v14h-4z" />
-    </svg>
-  );
+  return `${m}:${s.toFixed(3).padStart(6, '0')}`;
 }

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Loader2, Plus, RotateCw, Trash2 } from 'lucide-react';
 import { Button } from '@quietcut/ui';
 import type { CleanAudioOverlay, MediaSource } from '@quietcut/core';
 import { coveredReferenceDurationS } from '@quietcut/core';
@@ -93,8 +94,8 @@ export function OverlaysSection({ source, overlays }: Props) {
             Drop a separately-recorded voice take — Quietcut aligns it on the camera audio.
           </p>
         </div>
-        <Button size="sm" onClick={addCleanAudio}>
-          + Clean audio
+        <Button size="sm" onClick={addCleanAudio} className="gap-1.5">
+          <Plus size={14} /> Clean audio
         </Button>
       </div>
       {overlays.length === 0 ? (
@@ -121,7 +122,9 @@ export function OverlaysSection({ source, overlays }: Props) {
                   <p className="text-[10px] text-zinc-500">
                     {o.durationS.toFixed(1)}s source ·{' '}
                     {aligning ? (
-                      <span className="text-amber-300">aligning…</span>
+                      <span className="text-amber-300 inline-flex items-center gap-1">
+                        <Loader2 size={10} className="animate-spin" /> aligning
+                      </span>
                     ) : o.segments.length === 0 ? (
                       <span className="text-zinc-500">not aligned</span>
                     ) : (
@@ -139,15 +142,16 @@ export function OverlaysSection({ source, overlays }: Props) {
                   onClick={() => runAlign(o)}
                   disabled={aligning}
                   title="Re-run alignment"
+                  className="!px-2"
                 >
-                  ↻
+                  <RotateCw size={14} />
                 </Button>
                 <button
-                  className="text-zinc-500 hover:text-rose-400 px-2"
+                  className="text-zinc-500 hover:text-rose-400 p-1.5"
                   onClick={() => removeOverlay(source.id, o.id)}
                   aria-label={`Remove ${o.name}`}
                 >
-                  ×
+                  <Trash2 size={14} />
                 </button>
               </li>
             );

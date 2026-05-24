@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { save, open as openDialog, confirm } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
+import { FilePlus, FolderOpen, Redo2, Save, Scissors, Undo2 } from 'lucide-react';
 import { Button, Slider } from '@quietcut/ui';
 import { WaveformTimeline } from '@quietcut/timeline';
 import {
@@ -529,35 +530,51 @@ function Header({
   projectDirty: boolean;
 }) {
   return (
-    <header className="flex items-center justify-between border-b border-zinc-800 px-6 py-3">
+    <header className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md px-6 py-3 sticky top-0 z-50">
       <div className="flex items-center gap-3">
-        <h1 className="text-lg font-semibold tracking-tight">Quietcut</h1>
+        <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-br from-indigo-300 to-emerald-300 bg-clip-text text-transparent leading-none">
+          Quietcut
+        </h1>
         <span className="text-xs text-zinc-500">
           {projectName}
           {projectDirty ? ' •' : ''}
         </span>
       </div>
       <div className="flex items-center gap-1">
-        <Button variant="ghost" size="sm" onClick={onNewProject}>
-          New
+        <Button variant="ghost" size="sm" onClick={onNewProject} className="gap-1.5">
+          <FilePlus size={14} /> New
         </Button>
-        <Button variant="ghost" size="sm" onClick={onLoadProject}>
-          Open
+        <Button variant="ghost" size="sm" onClick={onLoadProject} className="gap-1.5">
+          <FolderOpen size={14} /> Open
         </Button>
-        <Button variant="ghost" size="sm" onClick={onSaveProject}>
-          Save
+        <Button variant="ghost" size="sm" onClick={onSaveProject} className="gap-1.5">
+          <Save size={14} /> Save
         </Button>
         <Button variant="ghost" size="sm" onClick={onSaveProjectAs}>
           Save as…
         </Button>
         <div className="mx-2 h-5 w-px bg-zinc-800" />
-        <Button variant="ghost" size="sm" onClick={onUndo} disabled={!canUndo}>
-          Undo
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onUndo}
+          disabled={!canUndo}
+          aria-label="Undo"
+          className="!px-2"
+        >
+          <Undo2 size={14} />
         </Button>
-        <Button variant="ghost" size="sm" onClick={onRedo} disabled={!canRedo}>
-          Redo
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onRedo}
+          disabled={!canRedo}
+          aria-label="Redo"
+          className="!px-2"
+        >
+          <Redo2 size={14} />
         </Button>
-        <span className="ml-3 text-xs text-zinc-500">v{QUIETCUT_VERSION}</span>
+        <span className="ml-3 text-xs text-zinc-500 font-mono">v{QUIETCUT_VERSION}</span>
       </div>
     </header>
   );
@@ -600,8 +617,11 @@ function EmptyState({
   busy: boolean;
 }) {
   return (
-    <div className="m-auto flex flex-col items-center gap-4 text-center">
-      <h2 className="text-2xl font-medium">Open files or a project</h2>
+    <div className="m-auto flex flex-col items-center gap-5 text-center">
+      <div className="w-24 h-24 rounded-full bg-indigo-500/10 flex items-center justify-center shadow-[0_0_40px_rgba(99,102,241,0.2)]">
+        <Scissors className="text-indigo-400 w-10 h-10" />
+      </div>
+      <h2 className="text-2xl font-semibold tracking-tight">Cut silences fast.</h2>
       <p className="max-w-md text-zinc-400">
         Quietcut detects silences automatically and lets you export the trimmed result or send it to
         your favorite editor.
