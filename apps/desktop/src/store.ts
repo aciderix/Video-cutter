@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { MediaSource, ProjectFile, Region, SilenceDetectionSettings } from '@quietcut/core';
+import type {
+  CleanAudioOverlay,
+  MediaSource,
+  ProjectFile,
+  Region,
+  SilenceDetectionSettings,
+} from '@quietcut/core';
 import { DEFAULT_DETECTION, createEmptyProject } from '@quietcut/core';
 
 interface RegionsSnapshot {
@@ -27,6 +33,11 @@ interface QuietcutState {
   /** Per-source: which kept region ids are checked for export. When a
    * source has no entry here, the default is "all kept regions selected". */
   exportSelectionBySource: Record<string, Set<string>>;
+  /** Clean-audio overlays attached to each source id. Each overlay carries
+   * its own segments mapping into the reference timeline. */
+  overlaysBySource: Record<string, CleanAudioOverlay[]>;
+  /** Set of overlay ids currently being aligned (used for spinner UI). */
+  aligningOverlays: Set<string>;
 
   // Sources
   addSource: (source: MediaSource) => void;
@@ -55,6 +66,16 @@ interface QuietcutState {
   undo: () => void;
   redo: () => void;
   resetHistory: () => void;
+
+  // Clean audio overlays
+  addOverlay: (sourceId: string, overlay: CleanAudioOverlay) => void;
+  removeOverlay: (sourceId: string, overlayId: string) => void;
+  updateOverlay: (
+    sourceId: string,
+    overlayId: string,
+    patch: Partial<CleanAudioOverlay>,
+  ) => void;
+  setAligning: (overlayId: string, aligning: boolean) => void;
 
   // Preview / export selection
   setSkipSilences: (skip: boolean) => void;
@@ -92,6 +113,8 @@ export const useStore = create<QuietcutState>((set, get) => ({
   dirty: false,
   skipSilences: false,
   exportSelectionBySource: {},
+  overlaysBySource: {},
+  aligningOverlays: new Set<string>(),
 
   addSource: (source) => {
     const { sources } = get();
@@ -108,16 +131,20 @@ export const useStore = create<QuietcutState>((set, get) => ({
   },
 
   removeSource: (id) => {
-    const { sources, regionsBySource, peaksBySource, currentSourceId } = get();
+    const { sources, regionsBySource, peaksBySource, currentSourceId, overlaysBySource } =
+      get();
     const rest = sources.filter((s) => s.id !== id);
     const newRegions = { ...regionsBySource };
     delete newRegions[id];
     const newPeaks = { ...peaksBySource };
     delete newPeaks[id];
+    const newOverlays = { ...overlaysBySource };
+    delete newOverlays[id];
     set({
       sources: rest,
       regionsBySource: newRegions,
       peaksBySource: newPeaks,
+      overlaysBySource: newOverlays,
       currentSourceId: currentSourceId === id ? (rest[0]?.id ?? null) : currentSourceId,
       dirty: true,
     });
@@ -229,6 +256,39 @@ export const useStore = create<QuietcutState>((set, get) => ({
 
   resetHistory: () => set({ past: [], future: [] }),
 
+  addOverlay: (sourceId, overlay) => {
+    const map = { ...get().overlaysBySource };
+    const list = [...(map[sourceId] ?? [])];
+    const existing = list.findIndex((o) => o.id === overlay.id);
+    if (existing >= 0) list[existing] = overlay;
+    else list.push(overlay);
+    map[sourceId] = list;
+    set({ overlaysBySource: map, dirty: true });
+  },
+
+  removeOverlay: (sourceId, overlayId) => {
+    const map = { ...get().overlaysBySource };
+    const list = (map[sourceId] ?? []).filter((o) => o.id !== overlayId);
+    map[sourceId] = list;
+    set({ overlaysBySource: map, dirty: true });
+  },
+
+  updateOverlay: (sourceId, overlayId, patch) => {
+    const map = { ...get().overlaysBySource };
+    const list = (map[sourceId] ?? []).map((o) =>
+      o.id === overlayId ? { ...o, ...patch } : o,
+    );
+    map[sourceId] = list;
+    set({ overlaysBySource: map, dirty: true });
+  },
+
+  setAligning: (overlayId, aligning) => {
+    const next = new Set(get().aligningOverlays);
+    if (aligning) next.add(overlayId);
+    else next.delete(overlayId);
+    set({ aligningOverlays: next });
+  },
+
   setSkipSilences: (skipSilences) => set({ skipSilences }),
 
   toggleExportSelection: (sourceId, regionId) => {
@@ -283,11 +343,14 @@ export const useStore = create<QuietcutState>((set, get) => ({
       projectName: project.name,
       dirty: false,
       exportSelectionBySource: {},
+      overlaysBySource: project.overlaysBySource ?? {},
+      aligningOverlays: new Set<string>(),
     });
   },
 
   toProjectFile: () => {
-    const { sources, regionsBySource, detectionSettings, projectName } = get();
+    const { sources, regionsBySource, detectionSettings, projectName, overlaysBySource } =
+      get();
     const base = createEmptyProject(projectName);
     return {
       ...base,
@@ -295,6 +358,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
       sources,
       regionsBySource,
       detectionSettings,
+      overlaysBySource,
     };
   },
 
@@ -313,6 +377,8 @@ export const useStore = create<QuietcutState>((set, get) => ({
       projectName: empty.name,
       dirty: false,
       exportSelectionBySource: {},
+      overlaysBySource: {},
+      aligningOverlays: new Set<string>(),
     });
   },
 

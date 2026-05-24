@@ -63,11 +63,16 @@ export const DEFAULT_DETECTION: SilenceDetectionSettings = {
 };
 
 export interface ProjectFile {
-  version: 1;
+  /** Schema version. v1 = sources + regions + settings. v2 adds
+   *  `overlaysBySource` so the loader can migrate forward. */
+  version: 1 | 2;
   name: string;
   createdAt: string;
   updatedAt: string;
   sources: MediaSource[];
   regionsBySource: Record<string, Region[]>;
   detectionSettings: SilenceDetectionSettings;
+  /** v2+: clean audio overlays attached to each source id. Optional so
+   *  the same struct stays compatible with v1 files. */
+  overlaysBySource?: Record<string, import('./sync/index.ts').CleanAudioOverlay[]>;
 }
