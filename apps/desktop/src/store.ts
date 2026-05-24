@@ -70,11 +70,7 @@ interface QuietcutState {
   // Clean audio overlays
   addOverlay: (sourceId: string, overlay: CleanAudioOverlay) => void;
   removeOverlay: (sourceId: string, overlayId: string) => void;
-  updateOverlay: (
-    sourceId: string,
-    overlayId: string,
-    patch: Partial<CleanAudioOverlay>,
-  ) => void;
+  updateOverlay: (sourceId: string, overlayId: string, patch: Partial<CleanAudioOverlay>) => void;
   setAligning: (overlayId: string, aligning: boolean) => void;
 
   // Preview / export selection
@@ -131,8 +127,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
   },
 
   removeSource: (id) => {
-    const { sources, regionsBySource, peaksBySource, currentSourceId, overlaysBySource } =
-      get();
+    const { sources, regionsBySource, peaksBySource, currentSourceId, overlaysBySource } = get();
     const rest = sources.filter((s) => s.id !== id);
     const newRegions = { ...regionsBySource };
     delete newRegions[id];
@@ -275,9 +270,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
 
   updateOverlay: (sourceId, overlayId, patch) => {
     const map = { ...get().overlaysBySource };
-    const list = (map[sourceId] ?? []).map((o) =>
-      o.id === overlayId ? { ...o, ...patch } : o,
-    );
+    const list = (map[sourceId] ?? []).map((o) => (o.id === overlayId ? { ...o, ...patch } : o));
     map[sourceId] = list;
     set({ overlaysBySource: map, dirty: true });
   },
@@ -349,8 +342,7 @@ export const useStore = create<QuietcutState>((set, get) => ({
   },
 
   toProjectFile: () => {
-    const { sources, regionsBySource, detectionSettings, projectName, overlaysBySource } =
-      get();
+    const { sources, regionsBySource, detectionSettings, projectName, overlaysBySource } = get();
     const base = createEmptyProject(projectName);
     return {
       ...base,

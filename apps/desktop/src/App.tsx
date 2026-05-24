@@ -33,8 +33,11 @@ import {
   pathExists,
   formatBridgeError,
 } from './bridge.ts';
+import type { CleanAudioOverlay } from '@quietcut/core';
 import { MediaPlayer, type MediaPlayerHandle } from './MediaPlayer.tsx';
 import { ExportPanel } from './ExportPanel.tsx';
+import { OverlaysSection } from './OverlaysSection.tsx';
+import { OverlayStrip } from './OverlayStrip.tsx';
 import { TransportBar } from './TransportBar.tsx';
 import { useShortcuts } from './shortcuts.ts';
 import { clampViewport, MAX_ZOOM, MIN_ZOOM } from '@quietcut/timeline';
@@ -56,6 +59,7 @@ export function App() {
   const dirty = useStore((s) => s.dirty);
   const skipSilences = useStore((s) => s.skipSilences);
   const exportSelectionBySource = useStore((s) => s.exportSelectionBySource);
+  const overlaysBySource = useStore((s) => s.overlaysBySource);
   const store = useStore;
 
   const source = useMemo(
@@ -69,6 +73,10 @@ export function App() {
   const peaks = useMemo(
     () => (currentSourceId ? (peaksBySource[currentSourceId] ?? null) : null),
     [peaksBySource, currentSourceId],
+  );
+  const overlays = useMemo(
+    () => (currentSourceId ? (overlaysBySource[currentSourceId] ?? []) : []),
+    [overlaysBySource, currentSourceId],
   );
   /** Selection used by ExportPanel and RegionsList. Falls back to "all kept"
    * when the user has not explicitly toggled anything yet. */
@@ -482,6 +490,7 @@ export function App() {
               onZoomOut={zoomOut}
               onZoomFit={zoomFit}
               onCenterPlayhead={centerOnPlayhead}
+              overlays={overlays}
             />
           )}
           {error && (
@@ -636,6 +645,7 @@ function SourceView({
   onZoomOut,
   onZoomFit,
   onCenterPlayhead,
+  overlays,
 }: {
   source: MediaSource;
   regions: Region[];
@@ -663,6 +673,7 @@ function SourceView({
   onZoomOut: () => void;
   onZoomFit: () => void;
   onCenterPlayhead: () => void;
+  overlays: CleanAudioOverlay[];
 }) {
   const savedSeconds = source.duration - outputDuration(regions);
   return (
@@ -721,7 +732,14 @@ function SourceView({
           onRegionExportToggle={onToggleSelection}
           selectedExportIds={selectedIds}
         />
+        <OverlayStrip
+          overlays={overlays}
+          duration={source.duration}
+          zoom={zoom}
+          viewOffset={viewOffset}
+        />
       </div>
+      <OverlaysSection source={source} overlays={overlays} />
       <ExportPanel
         source={source}
         regions={regions}
