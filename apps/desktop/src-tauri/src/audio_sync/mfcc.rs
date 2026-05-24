@@ -36,6 +36,7 @@ pub struct MfccSequence {
 }
 
 impl MfccSequence {
+    #[allow(dead_code)]
     pub fn coeffs(&self, frame_idx: usize) -> &[f32] {
         let start = frame_idx * N_COEFFS;
         &self.frames[start..start + N_COEFFS]

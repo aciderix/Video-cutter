@@ -128,6 +128,35 @@ export async function pathExists(path: string): Promise<boolean> {
   return await invoke<boolean>('path_exists', { path });
 }
 
+export interface AlignedSegment {
+  candidateStartS: number;
+  candidateEndS: number;
+  referenceStartS: number;
+  referenceEndS: number;
+  /** 0..1 — higher = more confident this segment really lines up here. */
+  confidence: number;
+}
+
+export interface AlignmentReport {
+  segments: AlignedSegment[];
+  globalOffsetS: number;
+  globalConfidence: number;
+}
+
+export interface AlignClipRequest {
+  referencePath: string;
+  candidatePath: string;
+  /** "whole" (default) for a single global offset, "segmented" for
+   * chunk-by-chunk matching of out-of-order takes. */
+  mode?: 'whole' | 'segmented';
+  chunkSeconds?: number;
+  minConfidence?: number;
+}
+
+export async function alignClip(request: AlignClipRequest): Promise<AlignmentReport> {
+  return await invoke<AlignmentReport>('align_clip', { request });
+}
+
 export async function pickDirectory(): Promise<string | null> {
   const result = await open({ directory: true, multiple: false });
   if (!result) return null;

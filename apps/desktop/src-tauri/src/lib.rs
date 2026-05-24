@@ -31,6 +31,7 @@ pub fn run() {
             export::export_cut,
             export::export_segmented,
             export::cancel_export,
+            audio_sync::cmd::align_clip,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
