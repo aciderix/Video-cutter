@@ -109,14 +109,7 @@ export function alignSegmented(
     const slice = candidate.frames.subarray(start * N_COEFFS, end * N_COEFFS);
     const band = Math.max(Math.floor(chunkFrames / 8), 8);
     const hop = Math.max(Math.floor(chunkFrames / 40), 1);
-    const r = slidingDtwCost(
-      slice,
-      reference.frames,
-      chunkFrames,
-      reference.nFrames,
-      hop,
-      band,
-    );
+    const r = slidingDtwCost(slice, reference.frames, chunkFrames, reference.nFrames, hop, band);
     const confidence = confidenceFromCosts(r.bestCost, r.baselineCost);
     if (confidence >= minConfidence) {
       const candStart = start * candidate.hopSeconds;
@@ -182,7 +175,8 @@ function slidingDtwCost(
   }
 
   const sorted = probes.slice().sort((a, b) => a - b);
-  const baselineCost = sorted[Math.min(Math.floor(sorted.length / 2), sorted.length - 1)] ?? Infinity;
+  const baselineCost =
+    sorted[Math.min(Math.floor(sorted.length / 2), sorted.length - 1)] ?? Infinity;
   return { bestFrame, bestCost, baselineCost };
 }
 

@@ -29,9 +29,10 @@ export function computeMfcc(samples: Float32Array, sampleRate: number): MfccSequ
   if (samples.length === 0) {
     return { frames: new Float32Array(0), nFrames: 0, hopSeconds: HOP_LENGTH_MS / 1000 };
   }
-  const resampled = sampleRate === TARGET_SAMPLE_RATE
-    ? samples
-    : resampleLinear(samples, sampleRate, TARGET_SAMPLE_RATE);
+  const resampled =
+    sampleRate === TARGET_SAMPLE_RATE
+      ? samples
+      : resampleLinear(samples, sampleRate, TARGET_SAMPLE_RATE);
   const preemph = preemphasis(resampled, 0.97);
 
   const frameLen = Math.round((TARGET_SAMPLE_RATE * FRAME_LENGTH_MS) / 1000);

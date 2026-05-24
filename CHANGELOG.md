@@ -4,6 +4,47 @@ All notable changes to Quietcut are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — Mobile MFCC + DTW + Gemini-inspired UI refresh
+
+### Added
+
+- **Pure-TypeScript MFCC + DTW** in `@quietcut/core/sync/` (mfccTS.ts +
+  alignTS.ts). Mirrors the Rust audio_sync module exactly — same
+  constants, same cosine-distance DTW with a Sakoe-Chiba band — but
+  runs in any browser / WebView with no native deps. Includes a
+  hand-rolled radix-2 Cooley-Tukey FFT so we don't pull a JS FFT lib.
+- **Mobile clean-audio sync tab** (new "Sync" pill). Add overlay files
+  through the OS picker, alignment runs through `alignAudioBuffers`
+  on the JS thread, segments + confidence land in the same data
+  model the desktop already saves to project files.
+- **Mobile UI refresh** inspired by a Gemini AI Studio iteration:
+  lucide-react icons everywhere, pill tabs (Export · Detect · Sync ·
+  Regions) replacing accordions, white pill "Open File" button,
+  glowing-Scissors empty state, white primary "Save" button with an
+  indigo encode progress overlay, regions list with check/X icon
+  chips, zoom controls as a single rounded pill.
+- **Desktop UI refresh** in the same direction: gradient `Quietcut`
+  header, lucide icons on header actions (New/Open/Save/Undo/Redo),
+  white round play/pause button in the timeline transport bar,
+  lucide icons on zoom controls + Crosshair for "center on
+  playhead", white primary export button with the same animated
+  indigo progress fill, glowing-Scissors empty state.
+- iOS memory optimisations on mobile decode: AudioContext requested
+  at 16 kHz when supported (3× lower RAM), `decodeAudioData` called
+  on the raw ArrayBuffer to avoid a duplicate allocation. Both come
+  from the Gemini reference.
+
+### Backend unchanged
+
+Rust audio_sync, ffmpegMobile.ts, exporters, store, and player
+modules are untouched — this release is purely the data-model
+extension (mobile align entry point) and presentation work.
+
+### Test counts
+
+- Core: 50/50 (was 43) — +7 alignTS tests.
+- Total TS: 87/87, Rust: 19/19.
+
 ## [0.6.0] — Multi-source projects + clean-audio sync (MFCC + DTW)
 
 The headline feature: import a clean voice take (lavalier, studio
