@@ -6,10 +6,15 @@
  * reference timeline.
  *
  * The store keeps the data model platform-agnostic; the Rust backend fills
- * in segments via the `align_clip` command, while the UI overlays them on
- * the master timeline and the exporter mixes them into the final video.
+ * in segments via the `align_clip` command on desktop, while the pure-TS
+ * port in alignTS.ts does the same job inside the WebView on mobile.
  */
 import type { Seconds } from '../types.ts';
+
+export { alignAudioBuffers, alignWhole, alignSegmented } from './alignTS.ts';
+export type { AlignmentReport, AlignClipOptions } from './alignTS.ts';
+export { computeMfcc, N_COEFFS } from './mfccTS.ts';
+export type { MfccSequence } from './mfccTS.ts';
 
 export interface AlignedSegment {
   /** Range inside the overlay's own audio (seconds). */
