@@ -89,6 +89,7 @@ export function App() {
   const [activeTab, setActiveTab] = useState<TabId>('export');
   const [overlays, setOverlays] = useState<OverlayState[]>([]);
   const [aligningId, setAligningId] = useState<string | null>(null);
+  const [alignProgress, setAlignProgress] = useState(0);
   const [audioMode, setAudioMode] = useState<AudioMode>('mix');
 
   const timelineHeight = 110;
@@ -359,15 +360,21 @@ export function App() {
       };
       setOverlays((prev) => [...prev, draft]);
       setAligningId(id);
+      setAlignProgress(0);
       setStatus('Aligning…');
 
       // Run alignment off the next tick so the spinner has a chance
       // to render before we go heads-down.
       await new Promise((r) => setTimeout(r, 16));
-      const report = alignAudioBuffers(
+      const report = await alignAudioBuffers(
         { samples: samplesRef.current, sampleRate: sampleRateRef.current },
         { samples: mono, sampleRate: overlaySr },
-        { mode: 'segmented', chunkSeconds: 5, minConfidence: 0.2 },
+        {
+          mode: 'segmented',
+          chunkSeconds: 5,
+          minConfidence: 0.2,
+          onProgress: (ratio) => setAlignProgress(ratio),
+        },
       );
 
       setOverlays((prev) =>
@@ -391,6 +398,7 @@ export function App() {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setAligningId(null);
+      setAlignProgress(0);
       setBusy(false);
     }
   };
@@ -404,13 +412,19 @@ export function App() {
     const o = overlays.find((x) => x.id === id);
     if (!o || !o.cachedSamples || !o.cachedSampleRate) return;
     setAligningId(id);
+    setAlignProgress(0);
     setStatus('Re-aligning…');
     try {
       await new Promise((r) => setTimeout(r, 16));
-      const report = alignAudioBuffers(
+      const report = await alignAudioBuffers(
         { samples: samplesRef.current, sampleRate: sampleRateRef.current },
         { samples: o.cachedSamples, sampleRate: o.cachedSampleRate },
-        { mode: 'segmented', chunkSeconds: 5, minConfidence: 0.2 },
+        {
+          mode: 'segmented',
+          chunkSeconds: 5,
+          minConfidence: 0.2,
+          onProgress: (ratio) => setAlignProgress(ratio),
+        },
       );
       setOverlays((prev) =>
         prev.map((x) =>
@@ -427,6 +441,7 @@ export function App() {
       setStatus(`${report.segments.length} aligned segment(s)`);
     } finally {
       setAligningId(null);
+      setAlignProgress(0);
     }
   };
 
@@ -779,13 +794,23 @@ export function App() {
             <div className="flex-1 px-4 py-6">
               {(status || error) && (
                 <div
-                  className={`mb-4 px-3 py-2 text-[11px] font-mono rounded-lg border leading-relaxed ${
+                  className={`mb-4 overflow-hidden text-[11px] font-mono rounded-lg border leading-relaxed ${
                     error
                       ? 'bg-rose-950/50 border-rose-900 text-rose-300'
                       : 'bg-emerald-950/30 border-emerald-900 text-emerald-300'
                   }`}
                 >
-                  {error || status}
+                  <div className="px-3 py-2">
+                    {error || (aligningId ? `${status} ${(alignProgress * 100).toFixed(0)}%` : status)}
+                  </div>
+                  {aligningId && !error && (
+                    <div className="h-0.5 w-full bg-emerald-900/40">
+                      <div
+                        className="h-full bg-emerald-400 transition-[width] duration-150 ease-out"
+                        style={{ width: `${alignProgress * 100}%` }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -984,56 +1009,67 @@ export function App() {
                           const covered = coveredReferenceDurationS(o);
                           const aligning = aligningId === o.id;
                           return (
-                            <li key={o.id} className="flex items-center gap-2 py-2.5">
-                              <input
-                                type="checkbox"
-                                checked={o.enabled}
-                                onChange={() => toggleOverlay(o.id)}
-                                className="h-4 w-4 accent-emerald-500"
-                              />
-                              <div className="flex-1 min-w-0">
-                                <p className="truncate text-sm">{o.name}</p>
-                                <p className="text-[10px] text-zinc-500">
-                                  {o.durationS.toFixed(1)}s source ·{' '}
-                                  {aligning ? (
-                                    <span className="text-amber-300 inline-flex items-center gap-1">
-                                      <Loader2 size={9} className="animate-spin" /> aligning
-                                    </span>
-                                  ) : o.segments.length === 0 ? (
-                                    <span className="text-zinc-500">not aligned</span>
-                                  ) : (
-                                    <>
-                                      {o.segments.length} seg · {covered.toFixed(1)}s ·{' '}
-                                      <span
-                                        className={
-                                          o.globalConfidence > 0.5
-                                            ? 'text-emerald-400'
-                                            : o.globalConfidence > 0.25
-                                              ? 'text-amber-400'
-                                              : 'text-rose-400'
-                                        }
-                                      >
-                                        {(o.globalConfidence * 100).toFixed(0)}%
+                            <li key={o.id} className="flex flex-col gap-1 py-2.5">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={o.enabled}
+                                  onChange={() => toggleOverlay(o.id)}
+                                  className="h-4 w-4 accent-emerald-500"
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <p className="truncate text-sm">{o.name}</p>
+                                  <p className="text-[10px] text-zinc-500">
+                                    {o.durationS.toFixed(1)}s source ·{' '}
+                                    {aligning ? (
+                                      <span className="text-amber-300 inline-flex items-center gap-1">
+                                        <Loader2 size={9} className="animate-spin" />
+                                        aligning {(alignProgress * 100).toFixed(0)}%
                                       </span>
-                                    </>
-                                  )}
-                                </p>
+                                    ) : o.segments.length === 0 ? (
+                                      <span className="text-zinc-500">not aligned</span>
+                                    ) : (
+                                      <>
+                                        {o.segments.length} seg · {covered.toFixed(1)}s ·{' '}
+                                        <span
+                                          className={
+                                            o.globalConfidence > 0.5
+                                              ? 'text-emerald-400'
+                                              : o.globalConfidence > 0.25
+                                                ? 'text-amber-400'
+                                                : 'text-rose-400'
+                                          }
+                                        >
+                                          {(o.globalConfidence * 100).toFixed(0)}%
+                                        </span>
+                                      </>
+                                    )}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => realignOverlay(o.id)}
+                                  disabled={aligning}
+                                  className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-400 active:text-zinc-200 disabled:opacity-30"
+                                  aria-label="Re-run alignment"
+                                >
+                                  <RotateCw size={14} />
+                                </button>
+                                <button
+                                  onClick={() => removeOverlay(o.id)}
+                                  className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 hover:text-rose-400"
+                                  aria-label={`Remove ${o.name}`}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
                               </div>
-                              <button
-                                onClick={() => realignOverlay(o.id)}
-                                disabled={aligning}
-                                className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-400 active:text-zinc-200 disabled:opacity-30"
-                                aria-label="Re-run alignment"
-                              >
-                                <RotateCw size={14} />
-                              </button>
-                              <button
-                                onClick={() => removeOverlay(o.id)}
-                                className="h-8 w-8 rounded-full flex items-center justify-center text-zinc-500 hover:text-rose-400"
-                                aria-label={`Remove ${o.name}`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
+                              {aligning && (
+                                <div className="h-1 w-full rounded-full bg-zinc-800 overflow-hidden">
+                                  <div
+                                    className="h-full bg-amber-400 transition-[width] duration-150 ease-out"
+                                    style={{ width: `${alignProgress * 100}%` }}
+                                  />
+                                </div>
+                              )}
                             </li>
                           );
                         })}

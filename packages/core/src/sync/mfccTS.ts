@@ -21,13 +21,20 @@ const MEL_HIGH_HZ = 8_000.0;
 export interface MfccSequence {
   /** row-major: frames × N_COEFFS */
   frames: Float32Array;
+  /** L2 norm of each frame, cached so cosine distance skips one sqrt per pair. */
+  norms: Float32Array;
   nFrames: number;
   hopSeconds: number;
 }
 
 export function computeMfcc(samples: Float32Array, sampleRate: number): MfccSequence {
   if (samples.length === 0) {
-    return { frames: new Float32Array(0), nFrames: 0, hopSeconds: HOP_LENGTH_MS / 1000 };
+    return {
+      frames: new Float32Array(0),
+      norms: new Float32Array(0),
+      nFrames: 0,
+      hopSeconds: HOP_LENGTH_MS / 1000,
+    };
   }
   const resampled =
     sampleRate === TARGET_SAMPLE_RATE
@@ -40,7 +47,12 @@ export function computeMfcc(samples: Float32Array, sampleRate: number): MfccSequ
   const nFft = nextPow2(frameLen);
 
   if (preemph.length < frameLen) {
-    return { frames: new Float32Array(0), nFrames: 0, hopSeconds: HOP_LENGTH_MS / 1000 };
+    return {
+      frames: new Float32Array(0),
+      norms: new Float32Array(0),
+      nFrames: 0,
+      hopSeconds: HOP_LENGTH_MS / 1000,
+    };
   }
 
   const nFrames = 1 + Math.floor((preemph.length - frameLen) / hopLen);
@@ -49,6 +61,7 @@ export function computeMfcc(samples: Float32Array, sampleRate: number): MfccSequ
   const dct = buildDctMatrix(N_MELS, N_COEFFS);
 
   const out = new Float32Array(nFrames * N_COEFFS);
+  const norms = new Float32Array(nFrames);
   // Two parallel arrays for real/imaginary FFT input/output.
   const re = new Float32Array(nFft);
   const im = new Float32Array(nFft);
@@ -72,6 +85,7 @@ export function computeMfcc(samples: Float32Array, sampleRate: number): MfccSequ
     for (let m = 0; m < mel.length; m++) {
       mel[m] = Math.log(Math.max(mel[m]!, 1e-10));
     }
+    let frameNormSq = 0;
     for (let c = 0; c < N_COEFFS; c++) {
       const rowOffset = c * N_MELS;
       let s = 0;
@@ -79,10 +93,12 @@ export function computeMfcc(samples: Float32Array, sampleRate: number): MfccSequ
         s += dct[rowOffset + m]! * mel[m]!;
       }
       out[f * N_COEFFS + c] = s;
+      frameNormSq += s * s;
     }
+    norms[f] = Math.sqrt(frameNormSq);
   }
 
-  return { frames: out, nFrames, hopSeconds: HOP_LENGTH_MS / 1000 };
+  return { frames: out, norms, nFrames, hopSeconds: HOP_LENGTH_MS / 1000 };
 }
 
 // --- DSP helpers --------------------------------------------------------

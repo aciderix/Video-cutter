@@ -81,10 +81,10 @@ describe('computeMfcc (TS)', () => {
 });
 
 describe('alignWhole (TS)', () => {
-  it('finds offset of a clean candidate inside a longer reference', () => {
+  it('finds offset of a clean candidate inside a longer reference', async () => {
     const ref = voiceSignal(5, 13);
     const cand = ref.slice(16_000 * 2, 16_000 * 3);
-    const report = alignAudioBuffers(
+    const report = await alignAudioBuffers(
       { samples: ref, sampleRate: 16_000 },
       { samples: cand, sampleRate: 16_000 },
     );
@@ -92,11 +92,11 @@ describe('alignWhole (TS)', () => {
     expect(report.globalConfidence).toBeGreaterThan(0.3);
   });
 
-  it('survives noisy reference at 6 dB SNR', () => {
+  it('survives noisy reference at 6 dB SNR', async () => {
     const clean = voiceSignal(5, 13);
     const noisy = addNoise(clean, 6, 42);
     const cand = clean.slice(16_000 * 2, 16_000 * 3);
-    const report = alignAudioBuffers(
+    const report = await alignAudioBuffers(
       { samples: noisy, sampleRate: 16_000 },
       { samples: cand, sampleRate: 16_000 },
     );
