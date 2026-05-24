@@ -4,6 +4,53 @@ All notable changes to Quietcut are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — Multi-source projects + clean-audio sync (MFCC + DTW)
+
+The headline feature: import a clean voice take (lavalier, studio
+mic, …) and Quietcut **automatically aligns it on the camera audio**,
+even when the clean recording is in multiple files / multiple takes /
+out of order. Then export the video with only the clean voice sound.
+
+### Added
+
+- **MFCC + DTW alignment** in Rust (audio_sync module).
+  - 13-coefficient MFCC at 25 ms / 10 ms hop, 16 kHz resampled internally
+  - Cosine distance + Sakoe-Chiba band DTW
+  - Two strategies: `align_whole` (single offset) and `align_segmented`
+    (chunk-by-chunk for out-of-order multi-take inputs)
+- **Tauri command** `align_clip` runs on `spawn_blocking` and returns
+  an AlignmentReport with one or more aligned segments + confidence
+  score.
+- **TS data model** (`@quietcut/core/sync/`): `AlignedSegment`,
+  `CleanAudioOverlay`, `resolveOverlaps` (sweep-line winner resolution
+  for collisions between multiple overlays), `overlayGaps`,
+  `referenceToOverlayTime`.
+- **Project file v2** carries the overlays through save/load. v1
+  files migrate transparently (empty overlays map injected).
+- **OverlaysSection** desktop UI: "+ Clean audio" button, per-overlay
+  enable toggle, segment count + coverage + confidence badge, re-run
+  ↻ button, delete ×.
+- **OverlayStrip** thin canvas under the waveform shows where each
+  overlay's aligned segments live on the reference timeline. Colour
+  rotates per overlay; high-confidence overlays win on collisions.
+- **ExportPanel audio-source selector**: "Camera audio" / "Mix" /
+  "Clean overlay only". The exporter switches to a multi-input
+  filter_complex (one `-i` per enabled overlay) and picks the right
+  source per audio sub-piece per region.
+
+### Bug fixes
+
+- Player playhead now updates at 60 fps via `requestAnimationFrame`
+  while playing, fixing the "timeline doesn't move" / "scrub then
+  play resumes from the wrong point" issues on both desktop and
+  mobile. A short-lived scrubbing lock prevents stale `timeupdate`
+  events from overwriting React state after a seek.
+
+### Test counts
+
+- Rust: 19/19 (was 7/7) — +9 audio_sync, +3 decode/cmd/integration
+- TS: 80/80 (was 60/60) — +12 sync, +4 project v2, +4 overlay export
+
 ## [0.5.0] — Waveform fix, centered playhead, mobile video export
 
 ### Fixed
