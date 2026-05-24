@@ -60,6 +60,18 @@ export function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const player = (): HTMLMediaElement | null => videoRef.current ?? audioRef.current;
+  // Stable refs so the rAF/seek listener doesn't re-bind on every region
+  // toggle. Previously the timeupdate listener was being torn down + rebuilt
+  // every time the user tapped a region, which dropped events and made the
+  // playhead look frozen.
+  const regionsRef = useRef(regions);
+  regionsRef.current = regions;
+  const skipSilencesRef = useRef(skipSilences);
+  skipSilencesRef.current = skipSilences;
+  // While true, the rAF loop trusts the *user* as the source of currentTime
+  // and skips el.currentTime reads. Set during a scrub or while a seek is
+  // pending.
+  const scrubbingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -90,36 +102,77 @@ export function App() {
     [selectedRegions],
   );
 
+  /**
+   * Drive currentTime from a rAF loop while playing (smooth 60 fps playhead),
+   * and from a one-shot `seeked` event otherwise. Both honour the
+   * skipSilences setting. `scrubbingRef` short-circuits the loop so an active
+   * drag is never overwritten by a late timeupdate.
+   *
+   * Stable deps ([objectUrl]) — the loop reads regions/skipSilences via refs.
+   */
   useEffect(() => {
     const el = player();
     if (!el) return;
-    const handler = () => {
+    let rafId = 0;
+    let unmounted = false;
+
+    const sync = (force: boolean) => {
       const t = el.currentTime;
-      if (skipSilences) {
-        const r = regions.find((reg) => t >= reg.start && t <= reg.end);
+      if (skipSilencesRef.current) {
+        const r = regionsRef.current.find((reg) => t >= reg.start && t <= reg.end);
         if (r && !r.kept) {
           const target = Math.min(el.duration || r.end, r.end + 0.001);
-          if (target > t) {
+          if (target > t + 0.001) {
             el.currentTime = target;
-            return;
+            return; // a `seeked` event will follow and call us back
           }
         }
       }
-      setCurrentTime(t);
+      if (force || !scrubbingRef.current) setCurrentTime(t);
     };
-    el.addEventListener('timeupdate', handler);
-    return () => el.removeEventListener('timeupdate', handler);
-  }, [regions, skipSilences, objectUrl]);
 
-  useEffect(() => {
-    const interval = setInterval(() => setPlaying(!!player() && !player()!.paused), 200);
-    return () => clearInterval(interval);
-  }, []);
+    const tick = () => {
+      if (unmounted) return;
+      if (!el.paused) sync(false);
+      rafId = requestAnimationFrame(tick);
+    };
+
+    const onPlay = () => {
+      setPlaying(true);
+      if (!rafId) rafId = requestAnimationFrame(tick);
+    };
+    const onPause = () => {
+      setPlaying(false);
+      sync(true);
+    };
+    const onSeeked = () => sync(true);
+    const onTimeUpdate = () => {
+      // Belt-and-braces: covers iOS audio elements that don't fire 'play'
+      // until the buffer is ready.
+      if (!el.paused && !rafId) rafId = requestAnimationFrame(tick);
+    };
+
+    el.addEventListener('play', onPlay);
+    el.addEventListener('pause', onPause);
+    el.addEventListener('seeked', onSeeked);
+    el.addEventListener('timeupdate', onTimeUpdate);
+    sync(true);
+    if (!el.paused) onPlay();
+
+    return () => {
+      unmounted = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      el.removeEventListener('play', onPlay);
+      el.removeEventListener('pause', onPause);
+      el.removeEventListener('seeked', onSeeked);
+      el.removeEventListener('timeupdate', onTimeUpdate);
+    };
+  }, [objectUrl]);
 
   const togglePlay = () => {
     const el = player();
     if (!el) return;
-    if (el.paused) void el.play();
+    if (el.paused) void el.play().catch(() => {});
     else el.pause();
   };
 
@@ -332,11 +385,32 @@ export function App() {
     e.target.value = '';
   };
 
-  const onSeek = (t: number) => {
+  /**
+   * Authoritative seek: mark ourselves as the source of truth, push the
+   * value into React state + the media element, then wait for the next
+   * `seeked` event to release the lock. Prevents the race where a late
+   * `timeupdate` from a still-pending seek overwrites our target.
+   */
+  const onSeek = useCallback((t: number) => {
+    scrubbingRef.current = true;
     setCurrentTime(t);
     const el = player();
-    if (el) el.currentTime = t;
-  };
+    if (!el) {
+      scrubbingRef.current = false;
+      return;
+    }
+    el.currentTime = t;
+    const release = () => {
+      scrubbingRef.current = false;
+      el.removeEventListener('seeked', release);
+    };
+    el.addEventListener('seeked', release, { once: true });
+    // Safety net: if the browser silently drops the seek (e.g. unbuffered
+    // region), release after a short grace so future plays still honour it.
+    setTimeout(() => {
+      if (scrubbingRef.current) scrubbingRef.current = false;
+    }, 400);
+  }, []);
 
   const onRegionKeptToggle = (id: string) => setRegions((r) => toggleKept(r, id));
 
