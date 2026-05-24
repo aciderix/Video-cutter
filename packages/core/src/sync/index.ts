@@ -82,10 +82,7 @@ export function referenceToOverlayTime(
  * segments). Used in the UI to show "X seconds of clean audio aligned".
  */
 export function coveredReferenceDurationS(overlay: CleanAudioOverlay): Seconds {
-  return overlay.segments.reduce(
-    (acc, seg) => acc + (seg.referenceEndS - seg.referenceStartS),
-    0,
-  );
+  return overlay.segments.reduce((acc, seg) => acc + (seg.referenceEndS - seg.referenceStartS), 0);
 }
 
 /**
@@ -101,9 +98,7 @@ export function overlayGaps(
   if (overlay.segments.length === 0) {
     return [{ startS: 0, endS: referenceDuration }];
   }
-  const sorted = [...overlay.segments].sort(
-    (a, b) => a.referenceStartS - b.referenceStartS,
-  );
+  const sorted = [...overlay.segments].sort((a, b) => a.referenceStartS - b.referenceStartS);
   const gaps: { startS: Seconds; endS: Seconds }[] = [];
   let cursor: Seconds = 0;
   for (const seg of sorted) {

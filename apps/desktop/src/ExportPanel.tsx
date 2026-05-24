@@ -2,12 +2,13 @@ import { useEffect, useMemo, useState } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { Button } from '@quietcut/ui';
-import type { MediaSource, Region } from '@quietcut/core';
+import type { CleanAudioOverlay, MediaSource, Region } from '@quietcut/core';
 import { LOUDNESS_PRESETS, loudnessFilterArg } from '@quietcut/core';
 import {
   FILTER_COMPLEX_SEGMENT_THRESHOLD,
   FORMAT_PRESETS,
   buildFilterComplexExport,
+  buildOverlayExport,
   buildPerRegionExport,
   buildSegmentedExport,
   defaultPresetFor,
@@ -42,6 +43,7 @@ interface Props {
   regions: Region[];
   projectName: string;
   selectedIds: Set<string>;
+  overlays: CleanAudioOverlay[];
 }
 
 interface Progress {
@@ -52,7 +54,7 @@ interface Progress {
 
 let exportCounter = 0;
 
-export function ExportPanel({ source, regions, projectName, selectedIds }: Props) {
+export function ExportPanel({ source, regions, projectName, selectedIds, overlays }: Props) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -60,6 +62,13 @@ export function ExportPanel({ source, regions, projectName, selectedIds }: Props
   const [loudnessId, setLoudnessId] = useState<string>('none');
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [formatId, setFormatId] = useState<string>(() => defaultPresetFor(source.hasVideo).id);
+  const [audioMode, setAudioMode] = useState<'camera' | 'mix' | 'cleanOnly'>('mix');
+
+  const usableOverlays = useMemo(
+    () => overlays.filter((o) => o.enabled && o.segments.length > 0),
+    [overlays],
+  );
+  const overlayAudioActive = audioMode !== 'camera' && usableOverlays.length > 0;
 
   // If the source changes between audio-only and video, snap to a sensible
   // default. Keep an explicit choice if it remains valid.
@@ -126,7 +135,31 @@ export function ExportPanel({ source, regions, projectName, selectedIds }: Props
       const extraArgs: string[] = [];
       if (loudness) extraArgs.push('-af', loudnessFilterArg(loudness));
 
-      if (selectedCount > FILTER_COMPLEX_SEGMENT_THRESHOLD) {
+      if (overlayAudioActive) {
+        // Clean-audio overlay path: filter_complex picks the right input
+        // (camera vs each overlay) for every audio piece of every kept
+        // region. Doesn't currently support the >50-segment concat fallback
+        // because the graph grows with audio pieces, not just regions.
+        const plan = buildOverlayExport(
+          { source, regions, projectName },
+          {
+            outputPath,
+            overlays: usableOverlays,
+            cleanOnly: audioMode === 'cleanOnly',
+            selectedIds,
+            preset,
+            extraArgs,
+          },
+        );
+        await runExportCut({
+          args: plan.args,
+          expectedDurationS: plan.outputDurationS,
+          jobId,
+        });
+        setStatus(
+          `Wrote ${outputPath} — ${plan.segmentCount} segments, ${plan.audioPieces} audio pieces`,
+        );
+      } else if (selectedCount > FILTER_COMPLEX_SEGMENT_THRESHOLD) {
         // Many segments: per-segment cut + concat demuxer to dodge the
         // filter_complex OOM ceiling.
         const tmp = await tempDir();
@@ -333,6 +366,25 @@ export function ExportPanel({ source, regions, projectName, selectedIds }: Props
           </select>
         </div>
       </div>
+
+      {usableOverlays.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-zinc-400">
+          <label htmlFor="audio-mode" className="shrink-0">
+            Audio source:
+          </label>
+          <select
+            id="audio-mode"
+            value={audioMode}
+            onChange={(e) => setAudioMode(e.target.value as 'camera' | 'mix' | 'cleanOnly')}
+            disabled={busy}
+            className="flex-1 min-w-0 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-200"
+          >
+            <option value="camera">Camera audio (ignore overlays)</option>
+            <option value="mix">Mix: clean overlay where aligned, camera elsewhere</option>
+            <option value="cleanOnly">Clean overlay only (silence where unaligned)</option>
+          </select>
+        </div>
+      )}
 
       <p className="text-xs text-zinc-500">{preset.description}</p>
 

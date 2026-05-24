@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { MediaSource, Region } from '@quietcut/core';
+import type { CleanAudioOverlay } from '@quietcut/core';
 import {
   FILTER_COMPLEX_SEGMENT_THRESHOLD,
   FORMAT_PRESETS,
   buildFFmpegConcatList,
   buildFFmpegSegmentCommands,
   buildFilterComplexExport,
+  buildOverlayExport,
   buildPerRegionExport,
   buildSegmentedExport,
   defaultPresetFor,
@@ -289,6 +291,94 @@ describe('buildPerRegionExport', () => {
     });
     expect(plan.segments[0]?.args).toContain('-vn');
     expect(plan.segments[0]?.outputPath.endsWith('.wav')).toBe(true);
+  });
+});
+
+describe('buildOverlayExport', () => {
+  function overlay(
+    id: string,
+    segments: Array<[number, number, number, number, number]>,
+  ): CleanAudioOverlay {
+    return {
+      id,
+      name: `${id}.wav`,
+      path: `/tmp/${id}.wav`,
+      durationS: 30,
+      sampleRate: 48000,
+      channels: 1,
+      enabled: true,
+      globalOffsetS: 0,
+      globalConfidence: 0.5,
+      segments: segments.map(([cs, ce, rs, re, conf]) => ({
+        candidateStartS: cs,
+        candidateEndS: ce,
+        referenceStartS: rs,
+        referenceEndS: re,
+        confidence: conf,
+      })),
+    };
+  }
+
+  it('emits one ffmpeg input per overlay and one audio piece per coverage', () => {
+    // Reference 10 s, kept regions 0-2 + 3-6 + 7-10.
+    // Overlay A covers ref [3.5, 5.5] from its own t=1..3.
+    const a = overlay('A', [[1.0, 3.0, 3.5, 5.5, 0.8]]);
+    const plan = buildOverlayExport(ctx, {
+      outputPath: '/tmp/out.mp4',
+      overlays: [a],
+    });
+    // Two inputs: source + 1 overlay.
+    const inputCount = plan.args.filter((a) => a === '-i').length;
+    expect(inputCount).toBe(2);
+    expect(plan.segmentCount).toBe(3);
+    // Region 3-6 splits into source [3, 3.5] / overlay [3.5, 5.5] / source [5.5, 6]
+    // → 3 audio pieces, + 1 piece each for region 0-2 and 7-10 = 5 total.
+    expect(plan.audioPieces).toBe(5);
+    const fc = plan.args[plan.args.indexOf('-filter_complex') + 1]!;
+    // Overlay file is input index 1.
+    expect(fc).toContain('[1:a]atrim=start=1.000000:end=3.000000');
+    // Source-audio fallback piece for [3, 3.5].
+    expect(fc).toContain('[0:a]atrim=start=3.000000:end=3.500000');
+  });
+
+  it('cleanOnly replaces uncovered audio with anullsrc silence', () => {
+    const a = overlay('A', [[1.0, 3.0, 3.5, 5.5, 0.8]]);
+    const plan = buildOverlayExport(ctx, {
+      outputPath: '/tmp/out.mp4',
+      overlays: [a],
+      cleanOnly: true,
+    });
+    const fc = plan.args[plan.args.indexOf('-filter_complex') + 1]!;
+    // No source-audio atrim segments at all.
+    expect(fc).not.toContain('[0:a]atrim');
+    expect(fc).toContain('anullsrc=channel_layout=stereo:sample_rate=48000');
+  });
+
+  it('uses higher-confidence overlay when two collide on the same region', () => {
+    const a = overlay('A', [[0, 3, 3, 6, 0.4]]);
+    const b = overlay('B', [[0, 3, 3, 6, 0.9]]);
+    const plan = buildOverlayExport(ctx, {
+      outputPath: '/tmp/out.mp4',
+      overlays: [a, b],
+    });
+    const fc = plan.args[plan.args.indexOf('-filter_complex') + 1]!;
+    // B wins (higher confidence) → input index 2 (after source + A).
+    expect(fc).toContain('[2:a]atrim');
+    // A would be input index 1 — verify it does NOT show up.
+    expect(fc).not.toMatch(/\[1:a\]atrim=start=0\.000000/);
+  });
+
+  it('skips disabled overlays', () => {
+    const a = overlay('A', [[1.0, 3.0, 3.5, 5.5, 0.8]]);
+    a.enabled = false;
+    const plan = buildOverlayExport(ctx, {
+      outputPath: '/tmp/out.mp4',
+      overlays: [a],
+    });
+    const inputCount = plan.args.filter((a) => a === '-i').length;
+    expect(inputCount).toBe(1); // just the source
+    // All audio comes from source.
+    expect(plan.audioPieces).toBe(3); // one per kept region, no overlay break
   });
 });
 

@@ -18,4 +18,6 @@ export type {
 } from './segmentedExport.ts';
 export { FORMAT_PRESETS, findPreset, defaultPresetFor } from './formats.ts';
 export type { FormatPreset } from './formats.ts';
+export { buildOverlayExport } from './audioOverlay.ts';
+export type { OverlayExportPlan, OverlayExportOptions } from './audioOverlay.ts';
 export type { ExportContext } from './types.ts';

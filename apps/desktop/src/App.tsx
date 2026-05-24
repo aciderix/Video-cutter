@@ -745,6 +745,7 @@ function SourceView({
         regions={regions}
         projectName={projectName}
         selectedIds={selectedIds}
+        overlays={overlays}
       />
       <RegionsList
         regions={regions}
