@@ -783,9 +783,27 @@ export function App() {
   };
 
   const onOverlayFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (f) void addOverlay(f);
+    const files = Array.from(e.target.files ?? []);
     e.target.value = '';
+    if (files.length === 0) return;
+    void addOverlays(files);
+  };
+
+  // Queue multi-file overlay imports: addOverlay runs MFCC + DTW
+  // alignment on the JS thread so we can't parallelise without trashing
+  // the UI. Walk the list sequentially and surface "i/N" progress so
+  // the user can see batches of 20+ files making forward progress.
+  const addOverlays = async (files: File[]) => {
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]!;
+      if (files.length > 1) {
+        setStatus(`Importing track ${i + 1}/${files.length}: ${f.name}`);
+      }
+      await addOverlay(f);
+    }
+    if (files.length > 1) {
+      setStatus(`Imported ${files.length} tracks`);
+    }
   };
 
   const onSeek = useCallback((t: number) => {
@@ -1302,6 +1320,7 @@ export function App() {
                         <input
                           type="file"
                           accept="audio/*,video/*"
+                          multiple
                           className="hidden"
                           onChange={onOverlayFile}
                           disabled={busy || !!aligningId}
@@ -1314,7 +1333,10 @@ export function App() {
                         No overlays yet. Tap “Add” to load a clean voice take.
                       </p>
                     ) : (
-                      <ul className="divide-y divide-zinc-800/60">
+                      <ul
+                        className="divide-y divide-zinc-800/60 overflow-y-auto"
+                        style={{ maxHeight: 280 }}
+                      >
                         {overlays.map((o) => {
                           const covered = coveredReferenceDurationS(o);
                           const aligning = aligningId === o.id;
@@ -1497,6 +1519,10 @@ function ModeCard({
 
 const OVERLAY_PALETTE = ['#34d399', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#22d3ee'];
 const OVERLAY_ROW_HEIGHT = 34;
+// Cap the stacked-waveform area at this many rows; anything past it
+// becomes vertically scrollable so 20+ imported tracks don't push the
+// timeline halfway off the screen.
+const OVERLAY_STACK_VISIBLE_ROWS = 6;
 
 /**
  * Stacked mini-waveform per overlay rendered under the camera-audio
@@ -1518,8 +1544,16 @@ function OverlayWaveformStack({
   viewOffset: number;
   onToggle: (id: string) => void;
 }) {
+  const scrollable = overlays.length > OVERLAY_STACK_VISIBLE_ROWS;
   return (
-    <div className="bg-zinc-950/70 border-t border-zinc-900/60">
+    <div
+      className="bg-zinc-950/70 border-t border-zinc-900/60"
+      style={
+        scrollable
+          ? { maxHeight: OVERLAY_STACK_VISIBLE_ROWS * OVERLAY_ROW_HEIGHT, overflowY: 'auto' }
+          : undefined
+      }
+    >
       {overlays.map((o, i) => (
         <OverlayWaveformRow
           key={o.id}
