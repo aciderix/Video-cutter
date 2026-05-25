@@ -1378,7 +1378,7 @@ export function App() {
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">
           <img
-            src="/snipvox-wordmark.svg"
+            src="/snipvox-wordmark.png"
             alt="SnipVox"
             className="h-20 w-auto mb-6 drop-shadow-[0_0_40px_rgba(99,102,241,0.35)]"
           />

@@ -619,7 +619,7 @@ function EmptyState({
   return (
     <div className="m-auto flex flex-col items-center gap-5 text-center">
       <img
-        src="/snipvox-wordmark.svg"
+        src="/snipvox-wordmark.png"
         alt="SnipVox"
         className="h-24 w-auto drop-shadow-[0_0_30px_rgba(99,102,241,0.35)]"
       />
