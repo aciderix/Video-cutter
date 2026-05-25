@@ -57,6 +57,9 @@ export function OverlaysSection({ source, overlays }: Props) {
       globalOffsetS: 0,
       globalConfidence: 0,
       enabled: true,
+      hasVideo: media.hasVideo,
+      videoStream: media.videoStream,
+      audioStream: media.audioStream,
     };
     addOverlay(source.id, overlay);
     void runAlign(overlay);
