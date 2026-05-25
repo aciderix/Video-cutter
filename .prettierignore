@@ -1,0 +1,23 @@
+# Build outputs / generated bundles — never reformat.
+dist/
+build/
+out/
+.next/
+.turbo/
+.vite/
+coverage/
+
+# Committed release artifacts (minified bundles, deb/apk/etc.).
+release/
+
+# Tauri / Rust targets and Capacitor native projects.
+apps/desktop/src-tauri/target/
+apps/desktop/src-tauri/gen/
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/public/ffmpeg/
+
+# Dependencies / lockfiles.
+node_modules/
+pnpm-lock.yaml
+*.tsbuildinfo

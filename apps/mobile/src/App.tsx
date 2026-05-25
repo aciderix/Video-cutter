@@ -1034,7 +1034,8 @@ export function App() {
                   }`}
                 >
                   <div className="px-3 py-2">
-                    {error || (aligningId ? `${status} ${(alignProgress * 100).toFixed(0)}%` : status)}
+                    {error ||
+                      (aligningId ? `${status} ${(alignProgress * 100).toFixed(0)}%` : status)}
                   </div>
                   {aligningId && !error && (
                     <div className="h-0.5 w-full bg-emerald-900/40">
@@ -1167,14 +1168,16 @@ export function App() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-zinc-200">Auto noise gate</p>
                         <p className="text-[10px] text-zinc-500 leading-snug mt-0.5">
-                          Calibrates the threshold on the take's noise floor — robust
-                          against hiss / white noise / fan.
+                          Calibrates the threshold on the take's noise floor — robust against hiss /
+                          white noise / fan.
                           {samplesRef.current && sampleRateRef.current ? (
                             <>
-                              {' '}Floor ≈{' '}
-                              {estimateNoiseFloorDb(samplesRef.current, sampleRateRef.current).toFixed(
-                                1,
-                              )}{' '}
+                              {' '}
+                              Floor ≈{' '}
+                              {estimateNoiseFloorDb(
+                                samplesRef.current,
+                                sampleRateRef.current,
+                              ).toFixed(1)}{' '}
                               dB
                             </>
                           ) : null}
@@ -1586,10 +1589,7 @@ function OverlayWaveformRow({
       tabIndex={0}
       aria-label={overlay.enabled ? `Mute ${overlay.name}` : `Unmute ${overlay.name}`}
     >
-      <canvas
-        ref={canvasRef}
-        style={{ width: '100%', height: '100%', display: 'block' }}
-      />
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
       <span
         className={`absolute top-1 left-1 rounded px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider pointer-events-none ${
           overlay.enabled ? 'text-zinc-900' : 'text-zinc-300'

@@ -1,11 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
-import {
-  keptRegions,
-  type CleanAudioOverlay,
-  type MediaSource,
-  type Region,
-} from '@snipvox/core';
+import { keptRegions, type CleanAudioOverlay, type MediaSource, type Region } from '@snipvox/core';
 import { buildOverlayExport } from '@snipvox/exporters';
 
 /**
@@ -255,9 +250,7 @@ export async function exportSingleFileWithOverlays(opts: {
   onProgress?: FfmpegProgressFn;
   onLog?: FfmpegLogFn;
 }): Promise<{ blob: Blob; filename: string }> {
-  const usableOverlays = opts.overlays.filter(
-    (o) => o.enabled && o.segments.length > 0 && o.file,
-  );
+  const usableOverlays = opts.overlays.filter((o) => o.enabled && o.segments.length > 0 && o.file);
   if (usableOverlays.length === 0) {
     return exportSingleFile({
       sourceFile: opts.sourceFile,

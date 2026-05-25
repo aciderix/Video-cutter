@@ -107,10 +107,9 @@ export function WaveformTimeline({
   // dragging reads as a reversed scrub.
   const fullyVisible = duration > 0 && viewSpan >= duration - 1e-3;
   const effectiveCentered = playheadMode === 'centered' && !fullyVisible;
-  const computedOffset =
-    effectiveCentered
-      ? clampOffset(currentTime - viewSpan / 2, duration, viewSpan)
-      : clampOffset(offset, duration, viewSpan);
+  const computedOffset = effectiveCentered
+    ? clampOffset(currentTime - viewSpan / 2, duration, viewSpan)
+    : clampOffset(offset, duration, viewSpan);
   const safeOffset = computedOffset;
   const viewEnd = safeOffset + viewSpan;
 
@@ -246,12 +245,11 @@ export function WaveformTimeline({
     ctx.clearRect(0, 0, cssWidth, cssHeight);
 
     if (duration > 0) {
-      const px =
-        effectiveCentered
-          ? cssWidth / 2
-          : currentTime >= safeOffset && currentTime <= viewEnd
-            ? ((currentTime - safeOffset) / viewSpan) * cssWidth
-            : -10;
+      const px = effectiveCentered
+        ? cssWidth / 2
+        : currentTime >= safeOffset && currentTime <= viewEnd
+          ? ((currentTime - safeOffset) / viewSpan) * cssWidth
+          : -10;
       if (px >= 0) {
         // Triangular handle at the top for tactile feel, then a vertical line.
         ctx.fillStyle = '#fbbf24';
@@ -342,13 +340,12 @@ export function WaveformTimeline({
         const midX = (pts[0]!.x + pts[1]!.x) / 2;
         const midRatio = effectiveCentered ? 0.5 : (midX - rect.left) / rect.width;
         const newViewSpan = duration / newZoom;
-        const newOffset =
-          effectiveCentered
-            ? 0 // centered mode recomputes offset on each render
-            : Math.max(
-                0,
-                Math.min(duration - newViewSpan, gesture.anchorTime - midRatio * newViewSpan),
-              );
+        const newOffset = effectiveCentered
+          ? 0 // centered mode recomputes offset on each render
+          : Math.max(
+              0,
+              Math.min(duration - newViewSpan, gesture.anchorTime - midRatio * newViewSpan),
+            );
         onZoomChange(newZoom, newOffset);
         return;
       }
