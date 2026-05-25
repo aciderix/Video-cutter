@@ -276,7 +276,12 @@ export function ExportPanel({ source, regions, projectName, selectedIds, overlay
         ...r,
         kept: filteredRegions.includes(r),
       }));
-      const content = def.build({ source, regions: ctxRegions, projectName });
+      const content = def.build({
+        source,
+        regions: ctxRegions,
+        projectName,
+        overlays: usableOverlays,
+      });
       await writeFile(outputPath, content);
       setStatus(`Wrote ${def.label} → ${outputPath}`);
     } catch (e) {

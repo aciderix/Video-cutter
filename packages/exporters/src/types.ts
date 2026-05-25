@@ -1,9 +1,76 @@
-import type { MediaSource, Region } from '@snipvox/core';
+import type { CleanAudioOverlay, MediaSource, Region } from '@snipvox/core';
+import { keptRegions } from '@snipvox/core';
 
 export interface ExportContext {
   source: MediaSource;
   regions: Region[];
   projectName: string;
+  /** Aligned clean-audio overlays (typically lavalier or B-cam tracks).
+   *  Optional so callers that don't use multi-cam stay source-compatible.
+   *  NLE exporters re-emit each `enabled` overlay on its own lane / track
+   *  with the source offsets derived from `segments`. */
+  overlays?: CleanAudioOverlay[];
+}
+
+/** A single overlay clip resolved against the output (cut) timeline. The
+ *  reference position is the slice of the overlay's own source media that
+ *  ends up at `outputStartS` on the exported timeline. */
+export interface ResolvedOverlayClip {
+  /** Where the clip sits on the output (cut) timeline, in seconds. */
+  outputStartS: number;
+  /** Start time inside the overlay's own source media, in seconds. */
+  overlayStartS: number;
+  /** Duration of the clip, in seconds. */
+  durationS: number;
+}
+
+/**
+ * Intersect each overlay segment with the kept regions and project the
+ * intersection onto the post-cut output timeline. Drops:
+ *  - segments outside the kept regions (silence or trimmed sections),
+ *  - segments shorter than `epsilonS` after intersection.
+ *
+ * The returned list is sorted by `outputStartS` so a caller can serialise
+ * it straight into an NLE track without re-sorting.
+ */
+export function resolveOverlayClips(
+  overlay: CleanAudioOverlay,
+  regions: Region[],
+  epsilonS = 1 / 1000,
+): ResolvedOverlayClip[] {
+  if (overlay.segments.length === 0) return [];
+  const kept = keptRegions(regions);
+  if (kept.length === 0) return [];
+
+  // Sort kept regions by start time once, then walk them with a running
+  // "output cursor" so each region's contribution to the output timeline
+  // is `[outputBase, outputBase + (kept.end - kept.start))`.
+  const keptSorted = [...kept].sort((a, b) => a.start - b.start);
+  const outputBaseByIndex: number[] = [];
+  let cursor = 0;
+  for (const r of keptSorted) {
+    outputBaseByIndex.push(cursor);
+    cursor += r.end - r.start;
+  }
+
+  const out: ResolvedOverlayClip[] = [];
+  const segsSorted = [...overlay.segments].sort((a, b) => a.referenceStartS - b.referenceStartS);
+  for (const seg of segsSorted) {
+    for (let i = 0; i < keptSorted.length; i++) {
+      const k = keptSorted[i]!;
+      const interStart = Math.max(seg.referenceStartS, k.start);
+      const interEnd = Math.min(seg.referenceEndS, k.end);
+      if (interEnd - interStart < epsilonS) continue;
+      const outputStartS = outputBaseByIndex[i]! + (interStart - k.start);
+      const overlayStartS = seg.candidateStartS + (interStart - seg.referenceStartS);
+      out.push({
+        outputStartS,
+        overlayStartS,
+        durationS: interEnd - interStart,
+      });
+    }
+  }
+  return out.sort((a, b) => a.outputStartS - b.outputStartS);
 }
 
 /**

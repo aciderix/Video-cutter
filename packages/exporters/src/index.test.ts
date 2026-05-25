@@ -391,3 +391,147 @@ describe('OTIO deep clone', () => {
     expect(v1.media_reference).not.toBe(a1.media_reference);
   });
 });
+
+describe('multi-cam NLE exports', () => {
+  // Reference timeline: 10 s of source with kept regions [0..2, 3..6, 7..10]
+  // (concatenated to 8 s of output).
+  function multiSource(): MediaSource {
+    return source;
+  }
+  function multiRegions(): Region[] {
+    return regions;
+  }
+
+  function overlay(
+    id: string,
+    name: string,
+    hasVideo: boolean,
+    segs: Array<[number, number, number, number]>, // candStart, candEnd, refStart, refEnd
+  ): CleanAudioOverlay {
+    return {
+      id,
+      name,
+      path: `/tmp/${name}`,
+      durationS: 30,
+      sampleRate: 48000,
+      channels: 1,
+      enabled: true,
+      hasVideo,
+      globalOffsetS: 0,
+      globalConfidence: 0.9,
+      segments: segs.map(([cs, ce, rs, re]) => ({
+        candidateStartS: cs,
+        candidateEndS: ce,
+        referenceStartS: rs,
+        referenceEndS: re,
+        confidence: 0.9,
+      })),
+    };
+  }
+
+  it('FCPXML emits one extra asset and lane per enabled overlay', () => {
+    // Overlay covers reference [3..6] entirely (inside kept #2) and
+    // bleeds into reference [6..7] (a dropped silence region — must be
+    // clipped away).
+    const lavalier = overlay('ov-1', 'lav.wav', false, [[1, 5, 3, 7]]);
+    const bcam = overlay('ov-2', 'bcam.mp4', true, [[0, 5, 0, 5]]);
+    const xml = exportFCPXML({
+      ...ctx,
+      source: multiSource(),
+      regions: multiRegions(),
+      overlays: [lavalier, bcam],
+    });
+    // Two extra <asset> entries in <resources>.
+    expect((xml.match(/<asset id=/g) ?? []).length).toBe(3);
+    expect(xml).toContain('name="lav.wav"');
+    expect(xml).toContain('name="bcam.mp4"');
+    // Video overlay rides lane="1", audio overlay lane="-1".
+    expect(xml).toMatch(/name="bcam\.mp4 #1" lane="1"/);
+    expect(xml).toMatch(/name="lav\.wav #1" lane="-1"/);
+    // The lavalier segment [refStart=3, refEnd=7] intersects only kept
+    // region [3..6] → output starts at 2 s (2 s of prior kept content),
+    // overlay start 1 s, duration 3 s, all formatted against the
+    // 30 fps denominator.
+    expect(xml).toMatch(
+      /name="lav\.wav #1" lane="-1"[^>]*offset="60\/30s"[^>]*start="30\/30s"[^>]*duration="90\/30s"/,
+    );
+  });
+
+  it('FCPXML drops disabled or unaligned overlays', () => {
+    const empty = overlay('ov-empty', 'empty.wav', false, []);
+    const off = overlay('ov-off', 'off.wav', false, [[0, 2, 0, 2]]);
+    off.enabled = false;
+    const xml = exportFCPXML({
+      ...ctx,
+      source: multiSource(),
+      regions: multiRegions(),
+      overlays: [empty, off],
+    });
+    expect((xml.match(/<asset id=/g) ?? []).length).toBe(1); // just main
+    expect(xml).not.toMatch(/lane="/);
+  });
+
+  it('OTIO adds one track per overlay with gaps padding the timeline', () => {
+    const lav = overlay('ov-1', 'lav.wav', false, [[1, 4, 4, 7]]);
+    const json = JSON.parse(
+      exportOTIO({ ...ctx, source: multiSource(), regions: multiRegions(), overlays: [lav] }),
+    );
+    // V1 + A1 + A2 (overlay).
+    expect(json.tracks.children).toHaveLength(3);
+    const lavTrack = json.tracks.children[2];
+    expect(lavTrack.kind).toBe('Audio');
+    expect(lavTrack.name).toBe('A2');
+    // Overlay covers ref [4..6] (clipped to kept #2 end at 6); in the cut
+    // timeline that lands at output [3..5]. Expect Gap(3s) + Clip(2s) + Gap(3s) = 8s total.
+    const totalDur = lavTrack.children.reduce(
+      (acc: number, c: { source_range: { duration: { value: number } } }) =>
+        acc + c.source_range.duration.value / 30,
+      0,
+    );
+    expect(totalDur).toBeCloseTo(8, 5);
+    const clipChild = lavTrack.children.find(
+      (c: { OTIO_SCHEMA: string }) => c.OTIO_SCHEMA === 'Clip.2',
+    );
+    expect(clipChild.source_range.duration.value / 30).toBeCloseTo(2, 5);
+  });
+
+  it('OTIO labels a video overlay as a Video track', () => {
+    const cam = overlay('ov-2', 'b.mp4', true, [[0, 3, 0, 3]]);
+    const json = JSON.parse(
+      exportOTIO({ ...ctx, source: multiSource(), regions: multiRegions(), overlays: [cam] }),
+    );
+    // V1 + A1 + V2 (overlay video).
+    expect(json.tracks.children).toHaveLength(3);
+    expect(json.tracks.children[2].kind).toBe('Video');
+    expect(json.tracks.children[2].name).toBe('V2');
+  });
+
+  it('EDL appends overlay events with their own reel + audio track', () => {
+    const lav = overlay('ov-1', 'lav-take2.wav', false, [[1, 4, 4, 7]]);
+    const edl = exportEDL({
+      ...ctx,
+      source: multiSource(),
+      regions: multiRegions(),
+      overlays: [lav],
+    });
+    expect(edl).toContain('* SNIPVOX MULTI-CAM OVERLAYS');
+    expect(edl).toMatch(/^004 +LAVTAKE2 A3 +C/m);
+    expect(edl).not.toMatch(/^005 /m);
+  });
+
+  it('EDL warns past the CMX 3600 four-audio-channel cap', () => {
+    const ovs = Array.from({ length: 6 }, (_, i) =>
+      overlay(`ov-${i}`, `o${i}.wav`, false, [[0, 1, 0, 1]]),
+    );
+    const edl = exportEDL({
+      ...ctx,
+      source: multiSource(),
+      regions: multiRegions(),
+      overlays: ovs,
+    });
+    expect(edl).toContain('WARNING: 6 overlays');
+    // Only A3..A6 appear (4 audio overlay tracks), not A7+
+    expect(edl).toMatch(/A6 +C/);
+    expect(edl).not.toMatch(/A7 /);
+  });
+});
