@@ -153,7 +153,7 @@ async function alignSegmentedAsync(
     await tick();
   }
 
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 2);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -203,7 +203,7 @@ function runSegmented(
     start += step;
   }
 
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 2);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -438,13 +438,16 @@ function mergeConsecutive(segs: AlignedSegment[], toleranceS: number): AlignedSe
   for (const s of sorted) {
     const last = out[out.length - 1];
     if (last) {
-      const candGap = Math.abs(s.candidateStartS - last.candidateEndS);
+      // Signed gap so the standard chunk overlap (negative gap) counts as
+      // touching. Math.abs was rejecting every consecutive chunk pair
+      // because alignSegmented intentionally overlaps by ~0.5 s.
+      const candGap = s.candidateStartS - last.candidateEndS;
       const refOffsetLast = last.referenceStartS - last.candidateStartS;
       const refOffsetNow = s.referenceStartS - s.candidateStartS;
       const drift = Math.abs(refOffsetNow - refOffsetLast);
       if (candGap <= toleranceS && drift <= toleranceS) {
-        last.candidateEndS = s.candidateEndS;
-        last.referenceEndS = s.referenceEndS;
+        last.candidateEndS = Math.max(last.candidateEndS, s.candidateEndS);
+        last.referenceEndS = Math.max(last.referenceEndS, s.referenceEndS);
         last.confidence = Math.min(last.confidence, s.confidence);
         continue;
       }

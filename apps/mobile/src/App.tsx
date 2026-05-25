@@ -292,24 +292,57 @@ export function App() {
 
     const t0 = ctx.currentTime;
     const m0 = media.currentTime;
+    const RAMP = 0.008; // 8 ms fade to avoid zipper noise at duck edges.
+    const uncoveredVal = audioMode === 'cleanOnly' ? 0 : 1;
+
     g.gain.cancelScheduledValues(t0);
-    g.gain.setValueAtTime(audioMode === 'cleanOnly' ? 0 : 1, t0);
+    g.gain.setValueAtTime(uncoveredVal, t0);
 
     if (media.paused) return;
 
-    const segs = resolveOverlaps(usableOverlays, source.duration);
+    const segs = resolveOverlaps(usableOverlays, source.duration).sort(
+      (a, b) => a.referenceStartS - b.referenceStartS,
+    );
+
+    // Build a union of covered reference intervals so back-to-back or
+    // overlapping segments produce one continuous duck instead of a
+    // flicker between 0 and 1 at every micro-boundary.
+    const covered: Array<[number, number]> = [];
+    for (const s of segs) {
+      const last = covered[covered.length - 1];
+      if (last && s.referenceStartS <= last[1] + 0.01) {
+        last[1] = Math.max(last[1], s.referenceEndS);
+      } else {
+        covered.push([s.referenceStartS, s.referenceEndS]);
+      }
+    }
+
+    if (audioMode === 'mix') {
+      for (const [refS, refE] of covered) {
+        if (refE <= m0) continue;
+        const startCtx = t0 + Math.max(0, refS - m0);
+        const endCtx = t0 + Math.max(0, refE - m0);
+        g.gain.setValueAtTime(uncoveredVal, Math.max(t0, startCtx - RAMP));
+        g.gain.linearRampToValueAtTime(0, startCtx);
+        g.gain.setValueAtTime(0, Math.max(startCtx, endCtx - RAMP));
+        g.gain.linearRampToValueAtTime(uncoveredVal, endCtx);
+      }
+    }
+
     for (const seg of segs) {
       if (seg.referenceEndS <= m0) continue;
       const overlay = usableOverlays.find((o) => o.id === seg.overlayId);
-      if (!overlay?.cachedAudioBuffer) continue;
+      const buf = overlay?.cachedAudioBuffer;
+      if (!buf) continue;
       const refStart = Math.max(seg.referenceStartS, m0);
       const offsetInSeg = refStart - seg.referenceStartS;
-      const candStart = seg.candidateStartS + offsetInSeg;
-      const dur = seg.referenceEndS - refStart;
-      const startInCtx = t0 + Math.max(0, seg.referenceStartS - m0);
+      const candStart = Math.max(0, Math.min(buf.duration, seg.candidateStartS + offsetInSeg));
+      const segDur = seg.referenceEndS - refStart;
+      const dur = Math.max(0, Math.min(segDur, buf.duration - candStart));
       if (dur <= 0) continue;
+      const startInCtx = t0 + Math.max(0, seg.referenceStartS - m0);
       const node = ctx.createBufferSource();
-      node.buffer = overlay.cachedAudioBuffer;
+      node.buffer = buf;
       node.connect(ctx.destination);
       try {
         node.start(startInCtx, candStart, dur);
@@ -317,11 +350,6 @@ export function App() {
         continue;
       }
       previewSourcesRef.current.push(node);
-
-      if (audioMode === 'mix') {
-        g.gain.setValueAtTime(0, startInCtx);
-        g.gain.setValueAtTime(1, startInCtx + dur);
-      }
     }
   }, [audioMode, usableOverlays, source, attachPreviewGraph, cancelOverlaySources]);
 
