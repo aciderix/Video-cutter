@@ -70,10 +70,26 @@ interface OverlayState extends CleanAudioOverlay {
   cachedSamples?: Float32Array;
   /** Sample rate of the cached samples (post-decode, normally 16 kHz). */
   cachedSampleRate?: number;
+  /** Full-quality decoded buffer for in-app preview through Web Audio. */
+  cachedAudioBuffer?: AudioBuffer;
   /** Downsampled |amplitude| peaks for the stacked waveform strip. */
   peaks?: Float32Array;
   /** In-memory File handle for ffmpeg.wasm to read on export. */
   file?: File;
+}
+
+// Module-scoped Web Audio context used both for overlay decoding and
+// for routing the camera audio + scheduling overlay playback. Lazy so
+// we don't create one on mount (iOS suspends it until user gesture).
+let _previewCtx: AudioContext | null = null;
+function getPreviewContext(): AudioContext {
+  if (!_previewCtx) {
+    const AC =
+      window.AudioContext ||
+      (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!;
+    _previewCtx = new AC();
+  }
+  return _previewCtx;
 }
 
 export function App() {
@@ -210,6 +226,130 @@ export function App() {
     else el.pause();
   };
 
+  // --- Preview audio mixer ----------------------------------------------
+  // Routes the <video>/<audio> element through Web Audio so the camera
+  // gain can be ducked or muted, and schedules BufferSources for each
+  // aligned overlay slice so the user actually hears the clean track
+  // during playback. The graph attaches lazily on first non-camera mode
+  // because createMediaElementSource is one-way (no native fallback).
+  const previewAttachedRef = useRef(false);
+  const cameraGainRef = useRef<GainNode | null>(null);
+  const previewSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+
+  const attachPreviewGraph = useCallback(() => {
+    if (previewAttachedRef.current) return;
+    const media = player();
+    if (!media) return;
+    const ctx = getPreviewContext();
+    try {
+      const src = ctx.createMediaElementSource(media);
+      const gain = ctx.createGain();
+      gain.gain.value = 1;
+      src.connect(gain).connect(ctx.destination);
+      cameraGainRef.current = gain;
+      previewAttachedRef.current = true;
+    } catch {
+      // Already attached or unsupported — keep native playback.
+    }
+  }, []);
+
+  const cancelOverlaySources = useCallback(() => {
+    for (const s of previewSourcesRef.current) {
+      try {
+        s.stop();
+      } catch {
+        /* already stopped */
+      }
+      try {
+        s.disconnect();
+      } catch {
+        /* ignore */
+      }
+    }
+    previewSourcesRef.current = [];
+  }, []);
+
+  const reschedulePreview = useCallback(() => {
+    const media = player();
+    if (!media || !source) return;
+    cancelOverlaySources();
+
+    if (audioMode === 'camera' || usableOverlays.length === 0) {
+      const g = cameraGainRef.current;
+      if (g) {
+        const t = getPreviewContext().currentTime;
+        g.gain.cancelScheduledValues(t);
+        g.gain.setValueAtTime(1, t);
+      }
+      return;
+    }
+
+    attachPreviewGraph();
+    const ctx = getPreviewContext();
+    if (ctx.state === 'suspended') void ctx.resume();
+    const g = cameraGainRef.current;
+    if (!g) return;
+
+    const t0 = ctx.currentTime;
+    const m0 = media.currentTime;
+    g.gain.cancelScheduledValues(t0);
+    g.gain.setValueAtTime(audioMode === 'cleanOnly' ? 0 : 1, t0);
+
+    if (media.paused) return;
+
+    const segs = resolveOverlaps(usableOverlays, source.duration);
+    for (const seg of segs) {
+      if (seg.referenceEndS <= m0) continue;
+      const overlay = usableOverlays.find((o) => o.id === seg.overlayId);
+      if (!overlay?.cachedAudioBuffer) continue;
+      const refStart = Math.max(seg.referenceStartS, m0);
+      const offsetInSeg = refStart - seg.referenceStartS;
+      const candStart = seg.candidateStartS + offsetInSeg;
+      const dur = seg.referenceEndS - refStart;
+      const startInCtx = t0 + Math.max(0, seg.referenceStartS - m0);
+      if (dur <= 0) continue;
+      const node = ctx.createBufferSource();
+      node.buffer = overlay.cachedAudioBuffer;
+      node.connect(ctx.destination);
+      try {
+        node.start(startInCtx, candStart, dur);
+      } catch {
+        continue;
+      }
+      previewSourcesRef.current.push(node);
+
+      if (audioMode === 'mix') {
+        g.gain.setValueAtTime(0, startInCtx);
+        g.gain.setValueAtTime(1, startInCtx + dur);
+      }
+    }
+  }, [audioMode, usableOverlays, source, attachPreviewGraph, cancelOverlaySources]);
+
+  useEffect(() => {
+    const media = player();
+    if (!media) return;
+    const onPlay = () => reschedulePreview();
+    const onPause = () => cancelOverlaySources();
+    const onSeeked = () => {
+      if (!media.paused) reschedulePreview();
+    };
+    const onEnded = () => cancelOverlaySources();
+
+    media.addEventListener('play', onPlay);
+    media.addEventListener('pause', onPause);
+    media.addEventListener('seeked', onSeeked);
+    media.addEventListener('ended', onEnded);
+    reschedulePreview();
+
+    return () => {
+      media.removeEventListener('play', onPlay);
+      media.removeEventListener('pause', onPause);
+      media.removeEventListener('seeked', onSeeked);
+      media.removeEventListener('ended', onEnded);
+      cancelOverlaySources();
+    };
+  }, [reschedulePreview, cancelOverlaySources, objectUrl]);
+
   const onViewportChange = (z: number, off: number) => {
     if (!source) return;
     const c = clampViewport(z, off, source.duration);
@@ -327,15 +467,7 @@ export function App() {
     setBusy(true);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const AudioCtx =
-        window.AudioContext ||
-        (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext!;
-      let ctx: AudioContext;
-      try {
-        ctx = new AudioCtx({ sampleRate: 16_000 });
-      } catch {
-        ctx = new AudioCtx();
-      }
+      const ctx = getPreviewContext();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
       const mono = new Float32Array(audioBuffer.length);
       for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
@@ -343,7 +475,6 @@ export function App() {
         for (let i = 0; i < data.length; i++) mono[i]! += data[i]! / audioBuffer.numberOfChannels;
       }
       const overlaySr = audioBuffer.sampleRate;
-      void ctx.close();
 
       const id = `ov-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
       const overlayPeaks = samplesToPeaks(mono, 1024);
@@ -360,6 +491,7 @@ export function App() {
         enabled: true,
         cachedSamples: mono,
         cachedSampleRate: overlaySr,
+        cachedAudioBuffer: audioBuffer,
         peaks: overlayPeaks,
         file,
       };
@@ -766,13 +898,36 @@ export function App() {
 
               {/* Stacked clean-track waveforms beneath the camera audio. */}
               {usableOverlays.length > 0 && (
-                <OverlayWaveformStack
-                  overlays={usableOverlays}
-                  duration={source.duration}
-                  zoom={zoom}
-                  viewOffset={viewOffset}
-                  onToggle={toggleOverlay}
-                />
+                <>
+                  <OverlayWaveformStack
+                    overlays={usableOverlays}
+                    duration={source.duration}
+                    zoom={zoom}
+                    viewOffset={viewOffset}
+                    onToggle={toggleOverlay}
+                  />
+                  <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/50 border-t border-zinc-900/60">
+                    <span className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500 shrink-0">
+                      Listen
+                    </span>
+                    <div className="flex gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar">
+                      {(['camera', 'mix', 'cleanOnly'] as AudioMode[]).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setAudioMode(m)}
+                          className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold transition-colors ${
+                            audioMode === m
+                              ? 'bg-white text-zinc-950'
+                              : 'bg-zinc-900 text-zinc-400 active:bg-zinc-800 border border-zinc-800'
+                          }`}
+                        >
+                          {m === 'camera' ? 'Camera' : m === 'mix' ? 'Mix' : 'Clean only'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
 
               <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900/40">
