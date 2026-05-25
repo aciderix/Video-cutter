@@ -28,13 +28,13 @@ on one platform, or stop at a single export format. SnipVox runs locally, ships
 on every major platform, and exports to every NLE worth its salt.
 
 |                           | SnipVox | Descript | Auphonic | AutoCut       |
-| ------------------------- | -------- | -------- | -------- | ------------- |
-| Local processing          | ✅       | ❌       | ❌       | ✅            |
-| Free                      | ✅       | ❌       | ❌       | ❌            |
-| Open source               | ✅       | ❌       | ❌       | ❌            |
-| Cross-platform            | ✅       | partial  | web only | Premiere only |
-| Mobile                    | ✅       | ❌       | ❌       | ❌            |
-| NLE export (XML/OTIO/EDL) | ✅       | partial  | ❌       | ❌            |
+| ------------------------- | ------- | -------- | -------- | ------------- |
+| Local processing          | ✅      | ❌       | ❌       | ✅            |
+| Free                      | ✅      | ❌       | ❌       | ❌            |
+| Open source               | ✅      | ❌       | ❌       | ❌            |
+| Cross-platform            | ✅      | partial  | web only | Premiere only |
+| Mobile                    | ✅      | ❌       | ❌       | ❌            |
+| NLE export (XML/OTIO/EDL) | ✅      | partial  | ❌       | ❌            |
 
 ## Architecture
 

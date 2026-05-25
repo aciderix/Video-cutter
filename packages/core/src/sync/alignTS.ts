@@ -144,8 +144,14 @@ async function alignSegmentedAsync(
     await tick();
   }
 
-  await refineProbesAroundConsensus(reference, candidate, probes, starts, chunkFrames, minConfidence, (r) =>
-    onProgress?.(0.75 + r * 0.25),
+  await refineProbesAroundConsensus(
+    reference,
+    candidate,
+    probes,
+    starts,
+    chunkFrames,
+    minConfidence,
+    (r) => onProgress?.(0.75 + r * 0.25),
   );
 
   const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
@@ -195,7 +201,14 @@ function runSegmented(
     if (!bestGlobal || r.bestCost < bestGlobal.bestCost) bestGlobal = r;
   }
 
-  void refineProbesAroundConsensusSync(reference, candidate, probes, starts, chunkFrames, minConfidence);
+  void refineProbesAroundConsensusSync(
+    reference,
+    candidate,
+    probes,
+    starts,
+    chunkFrames,
+    minConfidence,
+  );
 
   const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
   const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
@@ -515,17 +528,16 @@ function coarseToFineSlide(
   searchLo?: number,
   searchHi?: number,
 ): SlideResult {
-  if (
-    candidate.nFrames === 0 ||
-    reference.nFrames === 0 ||
-    reference.nFrames < candLengthFrames
-  ) {
+  if (candidate.nFrames === 0 || reference.nFrames === 0 || reference.nFrames < candLengthFrames) {
     return { bestFrame: 0, bestCost: Infinity, baselineCost: Infinity };
   }
   const band = Math.max(Math.floor(candLengthFrames / 8), 8);
   const coarseHop = Math.max(Math.floor(candLengthFrames / 24), 4);
   const lo = Math.max(0, searchLo ?? 0);
-  const hi = Math.min(reference.nFrames - candLengthFrames, searchHi ?? reference.nFrames - candLengthFrames);
+  const hi = Math.min(
+    reference.nFrames - candLengthFrames,
+    searchHi ?? reference.nFrames - candLengthFrames,
+  );
   if (hi < lo) {
     return { bestFrame: lo, bestCost: Infinity, baselineCost: Infinity };
   }
@@ -605,10 +617,7 @@ function slidingDtwCost(
   const queryNorms = candidate.norms.subarray(candStartFrame, candStartFrame + queryFrames);
 
   for (let start = searchLo; start <= searchHi; start += stepHop) {
-    const refView = reference.frames.subarray(
-      start * N_COEFFS,
-      (start + queryFrames) * N_COEFFS,
-    );
+    const refView = reference.frames.subarray(start * N_COEFFS, (start + queryFrames) * N_COEFFS);
     const refNorms = reference.norms.subarray(start, start + queryFrames);
     const cost = dtwDistance(queryFramesView, refView, queryNorms, refNorms, band);
     probes.push(cost);
@@ -680,12 +689,7 @@ function dtwDistance(
   return minCost / nQ;
 }
 
-function frameDistance(
-  a: Float32Array,
-  b: Float32Array,
-  aNorm: number,
-  bNorm: number,
-): number {
+function frameDistance(a: Float32Array, b: Float32Array, aNorm: number, bNorm: number): number {
   const denom = aNorm * bNorm;
   if (denom < 1e-12) return 1;
   let dot = 0;
@@ -720,8 +724,7 @@ function mergeConsecutive(segs: AlignedSegment[], toleranceS: number): AlignedSe
         // span — otherwise BufferSource playback ends before the segment
         // claims to and we hear a hole. Recompute from the first
         // segment's offset rather than Math.max-ing the ref bounds.
-        last.referenceEndS =
-          last.referenceStartS + (last.candidateEndS - last.candidateStartS);
+        last.referenceEndS = last.referenceStartS + (last.candidateEndS - last.candidateStartS);
         last.confidence = Math.min(last.confidence, s.confidence);
         continue;
       }
