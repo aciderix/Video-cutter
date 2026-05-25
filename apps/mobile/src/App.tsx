@@ -630,6 +630,38 @@ export function App() {
     }
   };
 
+  // Write every blob to the cache directory then open a SINGLE share
+  // sheet listing all of the file URIs — Capacitor Share v4.1+ accepts
+  // a `files: string[]`, so the user picks a destination once instead
+  // of being prompted per segment.
+  const writeAndShareMany = async (
+    blobs: Blob[],
+    filenames: string[],
+    dialogTitle: string,
+  ): Promise<string> => {
+    const uris: string[] = [];
+    for (let i = 0; i < blobs.length; i++) {
+      const dataUrl = await blobToDataUrl(blobs[i]!);
+      const written = await Filesystem.writeFile({
+        path: filenames[i]!,
+        data: dataUrl.split(',')[1] ?? '',
+        directory: Directory.Cache,
+      });
+      uris.push(written.uri);
+    }
+    try {
+      await Share.share({
+        title: dialogTitle,
+        text: dialogTitle,
+        files: uris,
+        dialogTitle,
+      });
+      return `Shared ${blobs.length} files`;
+    } catch {
+      return `Saved ${blobs.length} files to app cache`;
+    }
+  };
+
   const doExport = async () => {
     if (!source || !sourceFile) return;
     if (selectedRegions.length === 0) {
@@ -700,10 +732,8 @@ export function App() {
             setProgress({ pct: overall, label: `Segment ${index + 1}/${total}` });
           },
         });
-        for (let i = 0; i < blobs.length; i++) {
-          await writeAndShare(blobs[i]!, filenames[i]!, `SnipVox — ${filenames[i]}`);
-        }
-        setStatus(`Wrote ${blobs.length} files`);
+        const msg = await writeAndShareMany(blobs, filenames, `SnipVox — ${blobs.length} segments`);
+        setStatus(msg);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
