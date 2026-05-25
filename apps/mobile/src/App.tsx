@@ -1577,25 +1577,26 @@ function OverlayWaveformRow({
     }
   }, [overlay, color, duration, zoom, viewOffset]);
   return (
-    <div className="relative flex items-stretch">
-      <button
-        type="button"
-        onClick={onToggle}
-        className={`w-6 shrink-0 border-r border-zinc-900/60 text-[8px] font-semibold uppercase tracking-wider text-center transition-colors ${
-          overlay.enabled ? 'text-zinc-300' : 'text-zinc-600'
-        }`}
-        aria-label={overlay.enabled ? `Mute ${overlay.name}` : `Unmute ${overlay.name}`}
-        style={{ background: overlay.enabled ? color + '20' : 'transparent' }}
-      >
-        <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
-          {overlay.enabled ? 'ON' : 'OFF'}
-        </span>
-      </button>
+    <div
+      className="relative"
+      style={{ height: OVERLAY_ROW_HEIGHT }}
+      onClick={onToggle}
+      role="button"
+      tabIndex={0}
+      aria-label={overlay.enabled ? `Mute ${overlay.name}` : `Unmute ${overlay.name}`}
+    >
       <canvas
         ref={canvasRef}
-        aria-label={`Overlay waveform ${overlay.name}`}
-        style={{ flex: 1, height: OVERLAY_ROW_HEIGHT, display: 'block', minWidth: 0 }}
+        style={{ width: '100%', height: '100%', display: 'block' }}
       />
+      <span
+        className={`absolute top-1 left-1 rounded px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wider pointer-events-none ${
+          overlay.enabled ? 'text-zinc-900' : 'text-zinc-300'
+        }`}
+        style={{ background: overlay.enabled ? color : 'rgba(0,0,0,0.55)' }}
+      >
+        {overlay.enabled ? 'ON' : 'OFF'}
+      </span>
     </div>
   );
 }
