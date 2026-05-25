@@ -119,19 +119,17 @@ async function alignSegmentedAsync(
   const chunkFrames = Math.max(10, Math.min(rawChunkFrames, candidate.nFrames));
   const overlapFrames = Math.round(overlapSeconds / candidate.hopSeconds);
   const step = Math.max(chunkFrames - overlapFrames, 1);
+  const starts = chunkStarts(candidate.nFrames, chunkFrames, step);
 
   const probes: ChunkProbe[] = [];
   let bestGlobal: SlideResult | null = null;
-  const nChunks = Math.max(1, Math.floor((candidate.nFrames - chunkFrames) / step) + 1);
 
-  let start = 0;
-  let processed = 0;
-  while (start + chunkFrames <= candidate.nFrames) {
-    const end = start + chunkFrames;
+  for (let i = 0; i < starts.length; i++) {
+    const start = starts[i]!;
     const r = coarseToFineSlide(reference, candidate, start, chunkFrames);
     const confidence = confidenceFromCosts(r.bestCost, r.baselineCost);
     const candStart = start * candidate.hopSeconds;
-    const candEnd = end * candidate.hopSeconds;
+    const candEnd = (start + chunkFrames) * candidate.hopSeconds;
     const refStart = r.bestFrame * reference.hopSeconds;
     probes.push({
       candStart,
@@ -142,14 +140,12 @@ async function alignSegmentedAsync(
       confidence,
     });
     if (!bestGlobal || r.bestCost < bestGlobal.bestCost) bestGlobal = r;
-    start += step;
-    processed++;
-    onProgress?.(processed / nChunks);
+    onProgress?.((i + 1) / starts.length);
     await tick();
   }
 
-  const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 10);
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
+  const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 20);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -174,16 +170,15 @@ function runSegmented(
   const chunkFrames = Math.max(10, Math.min(rawChunkFrames, candidate.nFrames));
   const overlapFrames = Math.round(overlapSeconds / candidate.hopSeconds);
   const step = Math.max(chunkFrames - overlapFrames, 1);
+  const starts = chunkStarts(candidate.nFrames, chunkFrames, step);
 
   const probes: ChunkProbe[] = [];
   let bestGlobal: SlideResult | null = null;
-  let start = 0;
-  while (start + chunkFrames <= candidate.nFrames) {
-    const end = start + chunkFrames;
+  for (const start of starts) {
     const r = coarseToFineSlide(reference, candidate, start, chunkFrames);
     const confidence = confidenceFromCosts(r.bestCost, r.baselineCost);
     const candStart = start * candidate.hopSeconds;
-    const candEnd = end * candidate.hopSeconds;
+    const candEnd = (start + chunkFrames) * candidate.hopSeconds;
     const refStart = r.bestFrame * reference.hopSeconds;
     probes.push({
       candStart,
@@ -194,11 +189,10 @@ function runSegmented(
       confidence,
     });
     if (!bestGlobal || r.bestCost < bestGlobal.bestCost) bestGlobal = r;
-    start += step;
   }
 
-  const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 10);
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
+  const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 20);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -207,6 +201,25 @@ function runSegmented(
     : [0, 0];
 
   return { segments: merged, globalOffsetS, globalConfidence };
+}
+
+/**
+ * Position the chunk window across the whole candidate. Mirrors the
+ * straightforward `start += step` walk but explicitly tacks on a tail
+ * probe at `nFrames - chunkFrames` so the last <chunkSeconds worth of
+ * candidate audio always gets scored. Without it the last ~half-chunk
+ * was silently dropped and would show up as a single missing word at
+ * the end of the take.
+ */
+function chunkStarts(nFrames: number, chunkFrames: number, step: number): number[] {
+  if (nFrames < chunkFrames) return [];
+  const starts: number[] = [];
+  for (let s = 0; s + chunkFrames <= nFrames; s += step) starts.push(s);
+  const tail = nFrames - chunkFrames;
+  if (tail >= 0 && (starts.length === 0 || starts[starts.length - 1]! < tail)) {
+    starts.push(tail);
+  }
+  return starts;
 }
 
 function resultFromSlide(
@@ -263,8 +276,9 @@ function probesToSegments(
   for (let i = 0; i < probes.length; i++) {
     if (probes[i]!.confidence >= minConfidence) accepted[i] = true;
   }
-  // Iterate until no more bridging happens. Each pass uses the current
-  // accepted set to extend coverage one neighbor at a time.
+  // Pass A — natural bridge: low-confidence probes whose own MFCC offset
+  // already agrees with the nearest accepted neighbors get accepted as
+  // they are. Run to a fixed point so chains propagate from both ends.
   let changed = true;
   while (changed) {
     changed = false;
@@ -283,6 +297,29 @@ function probesToSegments(
         changed = true;
       }
     }
+  }
+  // Pass B — force bridge: any rejected probe sandwiched between two
+  // accepted neighbors gets pulled to the neighbor mean offset and
+  // accepted. This handles chunks where the MFCC happened to be too
+  // weak or ambiguous to localize on its own (silent intake, breath,
+  // background fricative), but where we know from both sides what the
+  // take's offset must be. The clean audio inside the chunk plays at
+  // the interpolated time so we don't lose the words it covers.
+  for (let i = 0; i < probes.length; i++) {
+    if (accepted[i]) continue;
+    const prevIdx = findAcceptedBefore(accepted, i);
+    const nextIdx = findAcceptedAfter(accepted, i);
+    if (prevIdx < 0 || nextIdx < 0) continue;
+    const prev = probes[prevIdx]!;
+    const next = probes[nextIdx]!;
+    if (Math.abs(prev.offset - next.offset) > driftToleranceS * 3) continue;
+    const mean = (prev.offset + next.offset) / 2;
+    const p = probes[i]!;
+    p.refStart = p.candStart + mean;
+    p.refEnd = p.candEnd + mean;
+    p.offset = mean;
+    p.confidence = Math.min(prev.confidence, next.confidence) * 0.5;
+    accepted[i] = true;
   }
 
   const out: AlignedSegment[] = [];
