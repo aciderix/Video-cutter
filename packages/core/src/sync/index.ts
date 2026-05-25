@@ -10,6 +10,7 @@
  * port in alignTS.ts does the same job inside the WebView on mobile.
  */
 import type { Seconds } from '../types.ts';
+import type { AudioStreamInfo, VideoStreamInfo } from '../types.ts';
 
 export { alignAudioBuffers, alignWhole, alignSegmented } from './alignTS.ts';
 export type { AlignmentReport, AlignClipOptions } from './alignTS.ts';
@@ -50,6 +51,16 @@ export interface CleanAudioOverlay {
   globalConfidence: number;
   /** When false, the overlay is loaded but ignored during export. */
   enabled: boolean;
+  /** True when the source file also carries a video stream that the user
+   *  might want re-emitted on a separate NLE lane / track. Audio-only
+   *  overlays leave this false (or unset). */
+  hasVideo?: boolean;
+  /** Optional video stream metadata (width/height/frameRate/codec) for
+   *  the overlay. Exporters fall back to the reference source's stream
+   *  when missing. */
+  videoStream?: VideoStreamInfo;
+  /** Optional audio stream metadata for the overlay. */
+  audioStream?: AudioStreamInfo;
 }
 
 /**

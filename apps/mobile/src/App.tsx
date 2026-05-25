@@ -506,6 +506,7 @@ export function App() {
 
       const id = `ov-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
       const overlayPeaks = samplesToPeaks(mono, 1024);
+      const hasVideo = file.type.startsWith('video/');
       const draft: OverlayState = {
         id,
         name: file.name,
@@ -517,6 +518,17 @@ export function App() {
         globalOffsetS: 0,
         globalConfidence: 0,
         enabled: true,
+        hasVideo,
+        audioStream: {
+          sampleRate: overlaySr,
+          channels: audioBuffer.numberOfChannels,
+          codec: 'pcm',
+        },
+        // When the overlay is a video, copy the reference's video stream
+        // metadata so the NLE has a frame rate / resolution to anchor
+        // against. We can't probe the overlay file from the WebView, so
+        // assuming "same format as the camera" is the safe default.
+        videoStream: hasVideo && source?.videoStream ? { ...source.videoStream } : undefined,
         cachedSamples: mono,
         cachedSampleRate: overlaySr,
         cachedAudioBuffer: audioBuffer,
@@ -752,7 +764,14 @@ export function App() {
         ...r,
         kept: effectiveSelected.has(r.id),
       }));
-      const content = def.build({ source, regions: filteredRegions, projectName: source.name });
+      const content = def.build({
+        source,
+        regions: filteredRegions,
+        projectName: source.name,
+        // Forward every aligned overlay so FCPXML / OTIO / EDL can
+        // re-emit them on their own lane / track with proper offsets.
+        overlays: usableOverlays,
+      });
       const filename = `${source.name.replace(/\.[^./]+$/, '')}.${def.ext}`;
       const written = await Filesystem.writeFile({
         path: filename,
