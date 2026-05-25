@@ -621,7 +621,7 @@ function EmptyState({
       <img
         src="/snipvox-wordmark.png"
         alt="SnipVox"
-        className="h-24 w-auto drop-shadow-[0_0_30px_rgba(99,102,241,0.35)]"
+        className="h-32 w-auto max-w-md drop-shadow-[0_0_30px_rgba(99,102,241,0.35)]"
       />
       <h2 className="text-2xl font-semibold tracking-tight">Cut silences fast.</h2>
       <p className="max-w-md text-zinc-400">

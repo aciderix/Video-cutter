@@ -1380,7 +1380,7 @@ export function App() {
           <img
             src="/snipvox-wordmark.png"
             alt="SnipVox"
-            className="h-20 w-auto mb-6 drop-shadow-[0_0_40px_rgba(99,102,241,0.35)]"
+            className="h-32 w-auto max-w-[80%] mb-6 drop-shadow-[0_0_40px_rgba(99,102,241,0.35)]"
           />
           <h2 className="text-3xl font-semibold mb-3 tracking-tight text-white">
             Cut silences fast.
