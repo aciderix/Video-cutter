@@ -934,26 +934,39 @@ export function App() {
                     viewOffset={viewOffset}
                     onToggle={toggleOverlay}
                   />
-                  <div className="flex items-center gap-2 px-3 py-2 bg-zinc-900/50 border-t border-zinc-900/60">
-                    <span className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500 shrink-0">
-                      Listen
-                    </span>
-                    <div className="flex gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar">
-                      {(['camera', 'mix', 'cleanOnly'] as AudioMode[]).map((m) => (
-                        <button
-                          key={m}
-                          type="button"
-                          onClick={() => setAudioMode(m)}
-                          className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold transition-colors ${
-                            audioMode === m
-                              ? 'bg-white text-zinc-950'
-                              : 'bg-zinc-900 text-zinc-400 active:bg-zinc-800 border border-zinc-800'
-                          }`}
-                        >
-                          {m === 'camera' ? 'Camera' : m === 'mix' ? 'Mix' : 'Clean only'}
-                        </button>
-                      ))}
+                  <div className="flex flex-col gap-1.5 px-3 py-2 bg-zinc-900/50 border-t border-zinc-900/60">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase tracking-wider font-semibold text-zinc-500 shrink-0">
+                        Listen
+                      </span>
+                      <div className="flex gap-1 flex-1 min-w-0 overflow-x-auto no-scrollbar">
+                        {(['camera', 'mix', 'cleanOnly'] as AudioMode[]).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setAudioMode(m)}
+                            className={`shrink-0 rounded-full px-3 py-1 text-[10px] font-semibold transition-colors ${
+                              audioMode === m
+                                ? 'bg-white text-zinc-950'
+                                : 'bg-zinc-900 text-zinc-400 active:bg-zinc-800 border border-zinc-800'
+                            }`}
+                          >
+                            {m === 'camera'
+                              ? 'Camera (raw)'
+                              : m === 'mix'
+                                ? 'Mix (export preview)'
+                                : 'Clean only'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                    <p className="text-[9px] text-zinc-500 leading-snug pl-[42px]">
+                      {audioMode === 'camera'
+                        ? 'Raw camera audio. Overlays are ignored.'
+                        : audioMode === 'mix'
+                          ? 'Clean track where aligned, camera fills the gaps — what the export will sound like.'
+                          : 'Only the aligned clean track plays. Silence elsewhere.'}
+                    </p>
                   </div>
                 </>
               )}

@@ -120,12 +120,9 @@ async function alignSegmentedAsync(
   const overlapFrames = Math.round(overlapSeconds / candidate.hopSeconds);
   const step = Math.max(chunkFrames - overlapFrames, 1);
 
-  const segments: AlignedSegment[] = [];
+  const probes: ChunkProbe[] = [];
   let bestGlobal: SlideResult | null = null;
-  const nChunks = Math.max(
-    1,
-    Math.floor((candidate.nFrames - chunkFrames) / step) + 1,
-  );
+  const nChunks = Math.max(1, Math.floor((candidate.nFrames - chunkFrames) / step) + 1);
 
   let start = 0;
   let processed = 0;
@@ -133,19 +130,17 @@ async function alignSegmentedAsync(
     const end = start + chunkFrames;
     const r = coarseToFineSlide(reference, candidate, start, chunkFrames);
     const confidence = confidenceFromCosts(r.bestCost, r.baselineCost);
-    if (confidence >= minConfidence) {
-      const candStart = start * candidate.hopSeconds;
-      const candEnd = end * candidate.hopSeconds;
-      const refStart = r.bestFrame * reference.hopSeconds;
-      const refEnd = refStart + (candEnd - candStart);
-      segments.push({
-        candidateStartS: candStart,
-        candidateEndS: candEnd,
-        referenceStartS: refStart,
-        referenceEndS: refEnd,
-        confidence,
-      });
-    }
+    const candStart = start * candidate.hopSeconds;
+    const candEnd = end * candidate.hopSeconds;
+    const refStart = r.bestFrame * reference.hopSeconds;
+    probes.push({
+      candStart,
+      candEnd,
+      refStart,
+      refEnd: refStart + (candEnd - candStart),
+      offset: refStart - candStart,
+      confidence,
+    });
     if (!bestGlobal || r.bestCost < bestGlobal.bestCost) bestGlobal = r;
     start += step;
     processed++;
@@ -153,6 +148,7 @@ async function alignSegmentedAsync(
     await tick();
   }
 
+  const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 10);
   const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
@@ -179,30 +175,29 @@ function runSegmented(
   const overlapFrames = Math.round(overlapSeconds / candidate.hopSeconds);
   const step = Math.max(chunkFrames - overlapFrames, 1);
 
-  const segments: AlignedSegment[] = [];
+  const probes: ChunkProbe[] = [];
   let bestGlobal: SlideResult | null = null;
   let start = 0;
   while (start + chunkFrames <= candidate.nFrames) {
     const end = start + chunkFrames;
     const r = coarseToFineSlide(reference, candidate, start, chunkFrames);
     const confidence = confidenceFromCosts(r.bestCost, r.baselineCost);
-    if (confidence >= minConfidence) {
-      const candStart = start * candidate.hopSeconds;
-      const candEnd = end * candidate.hopSeconds;
-      const refStart = r.bestFrame * reference.hopSeconds;
-      const refEnd = refStart + (candEnd - candStart);
-      segments.push({
-        candidateStartS: candStart,
-        candidateEndS: candEnd,
-        referenceStartS: refStart,
-        referenceEndS: refEnd,
-        confidence,
-      });
-    }
+    const candStart = start * candidate.hopSeconds;
+    const candEnd = end * candidate.hopSeconds;
+    const refStart = r.bestFrame * reference.hopSeconds;
+    probes.push({
+      candStart,
+      candEnd,
+      refStart,
+      refEnd: refStart + (candEnd - candStart),
+      offset: refStart - candStart,
+      confidence,
+    });
     if (!bestGlobal || r.bestCost < bestGlobal.bestCost) bestGlobal = r;
     start += step;
   }
 
+  const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 10);
   const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
@@ -235,6 +230,84 @@ function resultFromSlide(
     globalOffsetS: offsetS,
     globalConfidence: confidence,
   };
+}
+
+// --- Chunk-level probe handling ------------------------------------------
+
+interface ChunkProbe {
+  candStart: number;
+  candEnd: number;
+  refStart: number;
+  refEnd: number;
+  /** ref - cand origin. Probes within a continuous take share this. */
+  offset: number;
+  confidence: number;
+}
+
+/**
+ * Two-pass acceptance over the raw chunk probes. The first pass keeps
+ * every probe whose own confidence clears the threshold. The second
+ * pass walks the list iteratively and accepts low-confidence probes
+ * whose offset agrees with the nearest accepted neighbor (drift below
+ * `driftToleranceS`). This bridges single weak chunks — typically the
+ * ones over breath / fricative-heavy segments — that otherwise show up
+ * as missing words in the played-back clean track.
+ */
+function probesToSegments(
+  probes: ChunkProbe[],
+  minConfidence: number,
+  driftToleranceS: number,
+): AlignedSegment[] {
+  if (probes.length === 0) return [];
+  const accepted = new Array<boolean>(probes.length).fill(false);
+  for (let i = 0; i < probes.length; i++) {
+    if (probes[i]!.confidence >= minConfidence) accepted[i] = true;
+  }
+  // Iterate until no more bridging happens. Each pass uses the current
+  // accepted set to extend coverage one neighbor at a time.
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 0; i < probes.length; i++) {
+      if (accepted[i]) continue;
+      const offsetHere = probes[i]!.offset;
+      const prevIdx = findAcceptedBefore(accepted, i);
+      const nextIdx = findAcceptedAfter(accepted, i);
+      const refs: number[] = [];
+      if (prevIdx >= 0) refs.push(probes[prevIdx]!.offset);
+      if (nextIdx >= 0) refs.push(probes[nextIdx]!.offset);
+      if (refs.length === 0) continue;
+      const mean = refs.reduce((s, v) => s + v, 0) / refs.length;
+      if (Math.abs(offsetHere - mean) <= driftToleranceS) {
+        accepted[i] = true;
+        changed = true;
+      }
+    }
+  }
+
+  const out: AlignedSegment[] = [];
+  for (let i = 0; i < probes.length; i++) {
+    if (!accepted[i]) continue;
+    const p = probes[i]!;
+    out.push({
+      candidateStartS: p.candStart,
+      candidateEndS: p.candEnd,
+      referenceStartS: p.refStart,
+      referenceEndS: p.refEnd,
+      confidence: p.confidence,
+    });
+  }
+  return out;
+}
+
+function findAcceptedBefore(accepted: boolean[], i: number): number {
+  for (let k = i - 1; k >= 0; k--) if (accepted[k]) return k;
+  return -1;
+}
+
+function findAcceptedAfter(accepted: boolean[], i: number): number {
+  for (let k = i + 1; k < accepted.length; k++) if (accepted[k]) return k;
+  return -1;
 }
 
 // --- Sliding-window search (coarse-to-fine) ------------------------------
