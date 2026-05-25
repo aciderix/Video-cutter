@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Loader2, Plus, RotateCw, Trash2 } from 'lucide-react';
-import { Button } from '@quietcut/ui';
-import type { CleanAudioOverlay, MediaSource } from '@quietcut/core';
-import { coveredReferenceDurationS } from '@quietcut/core';
+import { Button } from '@snipvox/ui';
+import type { CleanAudioOverlay, MediaSource } from '@snipvox/core';
+import { coveredReferenceDurationS } from '@snipvox/core';
 import { alignClip, analyzeMedia, formatBridgeError, pickSingleMediaFile } from './bridge.ts';
 import { useStore } from './store.ts';
 
@@ -91,7 +91,7 @@ export function OverlaysSection({ source, overlays }: Props) {
         <div>
           <h3 className="text-sm font-semibold text-zinc-200">Clean audio overlays</h3>
           <p className="text-[10px] text-zinc-500">
-            Drop a separately-recorded voice take — Quietcut aligns it on the camera audio.
+            Drop a separately-recorded voice take — SnipVox aligns it on the camera audio.
           </p>
         </div>
         <Button size="sm" onClick={addCleanAudio} className="gap-1.5">

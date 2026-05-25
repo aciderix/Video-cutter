@@ -1,6 +1,6 @@
 /**
  * Loudness normalization presets and the corresponding FFmpeg filter strings.
- * Quietcut uses FFmpeg's `loudnorm` filter which implements EBU R128, the de
+ * SnipVox uses FFmpeg's `loudnorm` filter which implements EBU R128, the de
  * facto standard for broadcast / streaming targets:
  *
  *  - Spotify, Tidal: -14 LUFS integrated, -1 dBTP

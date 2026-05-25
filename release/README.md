@@ -1,4 +1,4 @@
-# Quietcut — pre-release artifacts
+# SnipVox — pre-release artifacts
 
 > ⚠️ Built from `claude/loving-ptolemy-x0AY6` at v0.7.0 (clean-audio MFCC+DTW sync + multi-input overlay export, on top of preview +
 > export selection + multi-format).
@@ -14,11 +14,11 @@ release/
 │   └── mobile/                           Vite-built SPA used by Capacitor (preview-only)
 ├── desktop/
 │   └── linux-x64/
-│       ├── quietcut                      11 MB stripped LTO binary
-│       └── quietcut-0.7.0_amd64.deb      3.6 MB Debian/Ubuntu package
+│       ├── snipvox                      11 MB stripped LTO binary
+│       └── snipvox-0.7.0_amd64.deb      3.6 MB Debian/Ubuntu package
 └── mobile/
     └── android/
-        └── quietcut-0.7.0-debug.apk      3.8 MB Capacitor debug APK (unsigned)
+        └── snipvox-0.7.0-debug.apk      3.8 MB Capacitor debug APK (unsigned)
 ```
 
 The Linux `.AppImage` (75 MB, bundles GTK / libsoup / webkit) and a signed
@@ -29,17 +29,17 @@ commands in [Reproducing the build](#reproducing-the-build) below.
 
 ### Desktop — Linux
 
-The `quietcut` binary expects `ffmpeg` and `ffprobe` to be on `$PATH`. On
+The `snipvox` binary expects `ffmpeg` and `ffprobe` to be on `$PATH`. On
 Debian/Ubuntu:
 
 ```sh
 sudo apt-get install -y ffmpeg libwebkit2gtk-4.1-0 libgtk-3-0
-./release/desktop/linux-x64/quietcut
+./release/desktop/linux-x64/snipvox
 ```
 
 The `.deb` declares those dependencies, so `sudo apt install -y
-./release/desktop/linux-x64/quietcut-0.1.0_amd64.deb` resolves everything in
-one step. Once installed, launch from your application menu or `quietcut`
+./release/desktop/linux-x64/snipvox-0.1.0_amd64.deb` resolves everything in
+one step. Once installed, launch from your application menu or `snipvox`
 on the command line.
 
 ### Mobile — Android
@@ -48,7 +48,7 @@ The APK is a **debug** build — Android will refuse to install it without
 "Install unknown apps" enabled for your file manager. Either:
 
 ```sh
-adb install release/mobile/android/quietcut-0.1.0-debug.apk
+adb install release/mobile/android/snipvox-0.1.0-debug.apk
 ```
 
 or copy it onto the device, tap it, and accept the unknown-source warning.
@@ -69,11 +69,11 @@ the built CSS/JS or for a CDN preview deploy.
 pnpm install
 
 # Desktop bundles (Linux .deb + .AppImage)
-pnpm --filter @quietcut/desktop build
+pnpm --filter @snipvox/desktop build
 cd apps/desktop && pnpm exec tauri build               # full bundles
 
 # Android APK
-pnpm --filter @quietcut/mobile build
+pnpm --filter @snipvox/mobile build
 cd apps/mobile && pnpm exec cap sync android
 cd android && ./gradlew assembleDebug                  # debug APK
 # or

@@ -1,6 +1,6 @@
-# Contributing to Quietcut
+# Contributing to SnipVox
 
-Thanks for considering a contribution! Quietcut is a community-driven, MIT-licensed
+Thanks for considering a contribution! SnipVox is a community-driven, MIT-licensed
 project.
 
 ## Ground rules
@@ -39,7 +39,7 @@ docs(readme): clarify cross-platform support matrix
 ## Tests
 
 - `packages/core` and `packages/exporters` must keep 100% of their public API
-  under test (`pnpm --filter @quietcut/core test`).
+  under test (`pnpm --filter @snipvox/core test`).
 - UI changes get a Playwright smoke test if user-visible.
 
 ## Code style

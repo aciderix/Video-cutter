@@ -1,7 +1,7 @@
 import type { ProjectFile } from '../types.ts';
 import { DEFAULT_DETECTION } from '../types.ts';
 
-export const PROJECT_FILE_EXTENSION = '.quietcut';
+export const PROJECT_FILE_EXTENSION = '.snipvox';
 export const PROJECT_FILE_VERSION = 2 as const;
 
 export function createEmptyProject(name = 'Untitled'): ProjectFile {
@@ -29,7 +29,7 @@ export function serializeProject(project: ProjectFile): string {
 }
 
 /**
- * Parse a `.quietcut` JSON file and forward-migrate old versions. v1
+ * Parse a `.snipvox` JSON file and forward-migrate old versions. v1
  * project files have no overlays — we synthesize the empty map so the
  * rest of the app can stay version-agnostic.
  */

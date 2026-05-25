@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import { convertFileSrc } from '@tauri-apps/api/core';
-import type { MediaSource, Region } from '@quietcut/core';
-import { regionAtTime } from '@quietcut/core';
+import type { MediaSource, Region } from '@snipvox/core';
+import { regionAtTime } from '@snipvox/core';
 
 export interface MediaPlayerHandle {
   play: () => void;

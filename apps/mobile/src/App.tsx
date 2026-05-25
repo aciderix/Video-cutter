@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Button, Slider } from '@quietcut/ui';
-import { WaveformTimeline, clampViewport, MAX_ZOOM, MIN_ZOOM } from '@quietcut/timeline';
+import { Button, Slider } from '@snipvox/ui';
+import { WaveformTimeline, clampViewport, MAX_ZOOM, MIN_ZOOM } from '@snipvox/timeline';
 import {
   DEFAULT_DETECTION,
   alignAudioBuffers,
@@ -16,14 +16,14 @@ import {
   type MediaSource,
   type Region,
   type SilenceDetectionSettings,
-} from '@quietcut/core';
+} from '@snipvox/core';
 import {
   buildOverlayExport,
   exportEDL,
   exportFCPXML,
   exportOTIO,
   exportResolveMarkers,
-} from '@quietcut/exporters';
+} from '@snipvox/exporters';
 import { Share } from '@capacitor/share';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import {
@@ -45,7 +45,6 @@ import {
   Play,
   Plus,
   RotateCw,
-  Scissors,
   Settings2,
   SquarePlay,
   Trash2,
@@ -688,7 +687,7 @@ export function App() {
                 });
               },
             });
-        const msg = await writeAndShare(blob, filename, `Quietcut — ${filename}`);
+        const msg = await writeAndShare(blob, filename, `SnipVox — ${filename}`);
         setStatus(msg);
       } else {
         const { blobs, filenames } = await exportPerRegion({
@@ -702,7 +701,7 @@ export function App() {
           },
         });
         for (let i = 0; i < blobs.length; i++) {
-          await writeAndShare(blobs[i]!, filenames[i]!, `Quietcut — ${filenames[i]}`);
+          await writeAndShare(blobs[i]!, filenames[i]!, `SnipVox — ${filenames[i]}`);
         }
         setStatus(`Wrote ${blobs.length} files`);
       }
@@ -733,7 +732,7 @@ export function App() {
       });
       try {
         await Share.share({
-          title: `Quietcut — ${def.label}`,
+          title: `SnipVox — ${def.label}`,
           text: `${def.label} export`,
           url: written.uri,
           dialogTitle: `Share ${filename}`,
@@ -815,7 +814,7 @@ export function App() {
           )}
           <div>
             <h1 className="text-base font-semibold tracking-tight bg-gradient-to-br from-indigo-300 to-emerald-300 bg-clip-text text-transparent leading-none">
-              Quietcut
+              SnipVox
             </h1>
             {source && (
               <p
@@ -1261,7 +1260,7 @@ export function App() {
                       <div>
                         <h3 className="text-sm font-semibold text-zinc-200">Clean audio sync</h3>
                         <p className="text-[10px] text-zinc-500 leading-relaxed mt-0.5">
-                          Add a lavalier / studio recording — Quietcut aligns it onto the camera
+                          Add a lavalier / studio recording — SnipVox aligns it onto the camera
                           audio with MFCC + DTW.
                         </p>
                       </div>
@@ -1378,14 +1377,16 @@ export function App() {
         </div>
       ) : (
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center animate-in fade-in zoom-in-95 duration-500">
-          <div className="w-24 h-24 rounded-full bg-indigo-500/10 flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(99,102,241,0.2)]">
-            <Scissors className="text-indigo-400 w-10 h-10" />
-          </div>
+          <img
+            src="/snipvox-wordmark.svg"
+            alt="SnipVox"
+            className="h-20 w-auto mb-6 drop-shadow-[0_0_40px_rgba(99,102,241,0.35)]"
+          />
           <h2 className="text-3xl font-semibold mb-3 tracking-tight text-white">
             Cut silences fast.
           </h2>
           <p className="text-zinc-400 text-sm max-w-xs mb-8 leading-relaxed">
-            Import a file. Quietcut detects the silent gaps so you can export a clean clip — and it
+            Import a file. SnipVox detects the silent gaps so you can export a clean clip — and it
             can also align a clean voice track onto your camera audio.
           </p>
           <label className="cursor-pointer">

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Region, Seconds } from '@quietcut/core';
+import type { Region, Seconds } from '@snipvox/core';
 import { downsamplePeaks } from './peaks.ts';
 
 export type PlayheadMode = 'free' | 'centered';

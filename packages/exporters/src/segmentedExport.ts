@@ -1,5 +1,5 @@
-import type { Region } from '@quietcut/core';
-import { keptRegions } from '@quietcut/core';
+import type { Region } from '@snipvox/core';
+import { keptRegions } from '@snipvox/core';
 import type { ExportContext } from './types.ts';
 import type { FormatPreset } from './formats.ts';
 import { planSegments, type SegmentPlan } from './ffmpeg.ts';

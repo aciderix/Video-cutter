@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { save, open as openDialog, confirm } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
-import { FilePlus, FolderOpen, Redo2, Save, Scissors, Undo2 } from 'lucide-react';
-import { Button, Slider } from '@quietcut/ui';
-import { WaveformTimeline } from '@quietcut/timeline';
+import { FilePlus, FolderOpen, Redo2, Save, Undo2 } from 'lucide-react';
+import { Button, Slider } from '@snipvox/ui';
+import { WaveformTimeline } from '@snipvox/timeline';
 import {
   PROJECT_FILE_EXTENSION,
-  QUIETCUT_VERSION,
+  SNIPVOX_VERSION,
   buildRegionsFromSilences,
   mergeRight,
   moveBoundary,
@@ -21,7 +21,7 @@ import {
   type MediaSource,
   type Region,
   type SilenceDetectionSettings,
-} from '@quietcut/core';
+} from '@snipvox/core';
 import { useStore } from './store.ts';
 import {
   pickMediaFiles,
@@ -34,14 +34,14 @@ import {
   pathExists,
   formatBridgeError,
 } from './bridge.ts';
-import type { CleanAudioOverlay } from '@quietcut/core';
+import type { CleanAudioOverlay } from '@snipvox/core';
 import { MediaPlayer, type MediaPlayerHandle } from './MediaPlayer.tsx';
 import { ExportPanel } from './ExportPanel.tsx';
 import { OverlaysSection } from './OverlaysSection.tsx';
 import { OverlayStrip } from './OverlayStrip.tsx';
 import { TransportBar } from './TransportBar.tsx';
 import { useShortcuts } from './shortcuts.ts';
-import { clampViewport, MAX_ZOOM, MIN_ZOOM } from '@quietcut/timeline';
+import { clampViewport, MAX_ZOOM, MIN_ZOOM } from '@snipvox/timeline';
 
 let idCounter = 0;
 const nextId = () => `m${Date.now().toString(36)}-${idCounter++}`;
@@ -222,7 +222,7 @@ export function App() {
   const saveProjectAs = async () => {
     const path = await save({
       defaultPath: `${projectName}${PROJECT_FILE_EXTENSION}`,
-      filters: [{ name: 'Quietcut project', extensions: ['quietcut'] }],
+      filters: [{ name: 'SnipVox project', extensions: ['snipvox'] }],
     });
     if (!path) return;
     await writeFile(path, serializeProject(store.getState().toProjectFile()));
@@ -239,7 +239,7 @@ export function App() {
   const loadProject = async () => {
     const picked = await openDialog({
       multiple: false,
-      filters: [{ name: 'Quietcut project', extensions: ['quietcut'] }],
+      filters: [{ name: 'SnipVox project', extensions: ['snipvox'] }],
     });
     const path = Array.isArray(picked) ? picked[0] : picked;
     if (!path) return;
@@ -307,10 +307,10 @@ export function App() {
   const handleDroppedPaths = useCallback(
     async (paths: string[]) => {
       const mediaPaths = paths.filter((p) =>
-        /\.(mp4|mov|mkv|webm|avi|mp3|wav|flac|m4a|aac|ogg|quietcut)$/i.test(p),
+        /\.(mp4|mov|mkv|webm|avi|mp3|wav|flac|m4a|aac|ogg|snipvox)$/i.test(p),
       );
       if (mediaPaths.length === 0) return;
-      const projectPath = mediaPaths.find((p) => p.endsWith('.quietcut'));
+      const projectPath = mediaPaths.find((p) => p.endsWith('.snipvox'));
       if (projectPath) {
         try {
           const raw = await readFile(projectPath);
@@ -533,7 +533,7 @@ function Header({
     <header className="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-md px-6 py-3 sticky top-0 z-50">
       <div className="flex items-center gap-3">
         <h1 className="text-lg font-semibold tracking-tight bg-gradient-to-br from-indigo-300 to-emerald-300 bg-clip-text text-transparent leading-none">
-          Quietcut
+          SnipVox
         </h1>
         <span className="text-xs text-zinc-500">
           {projectName}
@@ -574,7 +574,7 @@ function Header({
         >
           <Redo2 size={14} />
         </Button>
-        <span className="ml-3 text-xs text-zinc-500 font-mono">v{QUIETCUT_VERSION}</span>
+        <span className="ml-3 text-xs text-zinc-500 font-mono">v{SNIPVOX_VERSION}</span>
       </div>
     </header>
   );
@@ -618,12 +618,14 @@ function EmptyState({
 }) {
   return (
     <div className="m-auto flex flex-col items-center gap-5 text-center">
-      <div className="w-24 h-24 rounded-full bg-indigo-500/10 flex items-center justify-center shadow-[0_0_40px_rgba(99,102,241,0.2)]">
-        <Scissors className="text-indigo-400 w-10 h-10" />
-      </div>
+      <img
+        src="/snipvox-wordmark.svg"
+        alt="SnipVox"
+        className="h-24 w-auto drop-shadow-[0_0_30px_rgba(99,102,241,0.35)]"
+      />
       <h2 className="text-2xl font-semibold tracking-tight">Cut silences fast.</h2>
       <p className="max-w-md text-zinc-400">
-        Quietcut detects silences automatically and lets you export the trimmed result or send it to
+        SnipVox detects silences automatically and lets you export the trimmed result or send it to
         your favorite editor.
       </p>
       <div className="flex gap-2">

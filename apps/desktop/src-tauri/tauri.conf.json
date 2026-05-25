@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "Quietcut",
-  "version": "0.7.0",
-  "identifier": "app.quietcut.desktop",
+  "productName": "SnipVox",
+  "version": "0.8.0",
+  "identifier": "app.snipvox.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Quietcut",
+        "title": "SnipVox",
         "width": 1280,
         "height": 800,
         "minWidth": 900,

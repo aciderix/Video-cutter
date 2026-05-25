@@ -1,6 +1,6 @@
 {
-  "name": "quietcut",
-  "version": "0.7.0",
+  "name": "snipvox",
+  "version": "0.8.0",
   "private": true,
   "description": "Ultra-fast, open-source silence remover for video and audio. Desktop + mobile.",
   "license": "MIT",
@@ -21,10 +21,11 @@
     "test": "turbo run test",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yaml,yml}\"",
-    "desktop:dev": "pnpm --filter @quietcut/desktop dev",
-    "desktop:build": "pnpm --filter @quietcut/desktop build",
-    "mobile:dev": "pnpm --filter @quietcut/mobile dev",
-    "mobile:build": "pnpm --filter @quietcut/mobile build"
+    "desktop:dev": "pnpm --filter @snipvox/desktop dev",
+    "desktop:build": "pnpm --filter @snipvox/desktop build",
+    "mobile:dev": "pnpm --filter @snipvox/mobile dev",
+    "mobile:build": "pnpm --filter @snipvox/mobile build",
+    "branding:sync": "bash scripts/branding-sync.sh"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.2.4",

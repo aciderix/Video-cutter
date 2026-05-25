@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
 import { Download, Files, Square } from 'lucide-react';
-import { Button } from '@quietcut/ui';
-import type { CleanAudioOverlay, MediaSource, Region } from '@quietcut/core';
-import { LOUDNESS_PRESETS, loudnessFilterArg } from '@quietcut/core';
+import { Button } from '@snipvox/ui';
+import type { CleanAudioOverlay, MediaSource, Region } from '@snipvox/core';
+import { LOUDNESS_PRESETS, loudnessFilterArg } from '@snipvox/core';
 import {
   FILTER_COMPLEX_SEGMENT_THRESHOLD,
   FORMAT_PRESETS,
@@ -19,7 +19,7 @@ import {
   exportResolveMarkers,
   findPreset,
   type FormatPreset,
-} from '@quietcut/exporters';
+} from '@snipvox/exporters';
 import {
   cancelExport,
   formatBridgeError,

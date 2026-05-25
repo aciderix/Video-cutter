@@ -1,8 +1,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
-import type { MediaSource, SilenceDetectionSettings } from '@quietcut/core';
-import type { RawSilenceInterval } from '@quietcut/core';
+import type { MediaSource, SilenceDetectionSettings } from '@snipvox/core';
+import type { RawSilenceInterval } from '@snipvox/core';
 
 export type AppErrorKind =
   | 'ffmpegMissing'

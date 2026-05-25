@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { MediaSource, Region } from '@quietcut/core';
-import type { CleanAudioOverlay } from '@quietcut/core';
+import type { MediaSource, Region } from '@snipvox/core';
+import type { CleanAudioOverlay } from '@snipvox/core';
 import {
   FILTER_COMPLEX_SEGMENT_THRESHOLD,
   FORMAT_PRESETS,

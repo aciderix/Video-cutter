@@ -1,14 +1,14 @@
 # Changelog
 
-All notable changes to Quietcut are documented here. The format follows
+All notable changes to SnipVox are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.7.0] — Mobile MFCC + DTW + Gemini-inspired UI refresh
+## [0.8.0] — Mobile MFCC + DTW + Gemini-inspired UI refresh
 
 ### Added
 
-- **Pure-TypeScript MFCC + DTW** in `@quietcut/core/sync/` (mfccTS.ts +
+- **Pure-TypeScript MFCC + DTW** in `@snipvox/core/sync/` (mfccTS.ts +
   alignTS.ts). Mirrors the Rust audio_sync module exactly — same
   constants, same cosine-distance DTW with a Sakoe-Chiba band — but
   runs in any browser / WebView with no native deps. Includes a
@@ -23,7 +23,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   glowing-Scissors empty state, white primary "Save" button with an
   indigo encode progress overlay, regions list with check/X icon
   chips, zoom controls as a single rounded pill.
-- **Desktop UI refresh** in the same direction: gradient `Quietcut`
+- **Desktop UI refresh** in the same direction: gradient `SnipVox`
   header, lucide icons on header actions (New/Open/Save/Undo/Redo),
   white round play/pause button in the timeline transport bar,
   lucide icons on zoom controls + Crosshair for "center on
@@ -48,7 +48,7 @@ extension (mobile align entry point) and presentation work.
 ## [0.6.0] — Multi-source projects + clean-audio sync (MFCC + DTW)
 
 The headline feature: import a clean voice take (lavalier, studio
-mic, …) and Quietcut **automatically aligns it on the camera audio**,
+mic, …) and SnipVox **automatically aligns it on the camera audio**,
 even when the clean recording is in multiple files / multiple takes /
 out of order. Then export the video with only the clean voice sound.
 
@@ -62,7 +62,7 @@ out of order. Then export the video with only the clean voice sound.
 - **Tauri command** `align_clip` runs on `spawn_blocking` and returns
   an AlignmentReport with one or more aligned segments + confidence
   score.
-- **TS data model** (`@quietcut/core/sync/`): `AlignedSegment`,
+- **TS data model** (`@snipvox/core/sync/`): `AlignedSegment`,
   `CleanAudioOverlay`, `resolveOverlaps` (sweep-line winner resolution
   for collisions between multiple overlays), `overlayGaps`,
   `referenceToOverlayTime`.
@@ -270,7 +270,7 @@ out of order. Then export the video with only the clean voice sound.
 - `apps/mobile/src/webAudioExport.ts` — audio-only WAV export using
   Web Audio decode + a JS PCM encoder. Mobile no longer needs a native
   FFmpeg for "audio-only cut" jobs.
-- Single-source-of-truth `QUIETCUT_VERSION` in `@quietcut/core`. UI reads
+- Single-source-of-truth `SNIPVOX_VERSION` in `@snipvox/core`. UI reads
   it; CI checks the package.json / Cargo.toml / tauri.conf.json match.
 - Drag-and-drop file open on desktop (HTML5 `ondragover`/`ondrop`).
 - Confirmation dialogs (`New project` / `Remove source` when the project
@@ -302,7 +302,7 @@ Initial public-ish build. Seven phases delivered:
 - Phase 3 — Direct MP4 export via FFmpeg `filter_complex` with live
   progress events.
 - Phase 4 — NLE export: FCPXML, OTIO, EDL, DaVinci Resolve markers.
-- Phase 5 — Multi-source projects, batch analyze, `.quietcut` save/load.
+- Phase 5 — Multi-source projects, batch analyze, `.snipvox` save/load.
 - Phase 6 — Mobile app using Web Audio API for on-device silence
   detection (no native FFmpeg dependency). Share sheet integration.
 - Phase 7 — RMS-based VAD with hysteresis, EBU R128 loudness presets

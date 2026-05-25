@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import type { CleanAudioOverlay } from '@quietcut/core';
-import { resolveOverlaps } from '@quietcut/core';
+import type { CleanAudioOverlay } from '@snipvox/core';
+import { resolveOverlaps } from '@snipvox/core';
 
 interface Props {
   overlays: CleanAudioOverlay[];

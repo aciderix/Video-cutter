@@ -3,4 +3,4 @@
  * you bump package.json / Cargo.toml / tauri.conf.json; CI's `version:check`
  * task verifies they all agree.
  */
-export const QUIETCUT_VERSION = '0.7.0' as const;
+export const SNIPVOX_VERSION = '0.8.0' as const;

@@ -5,8 +5,8 @@ import {
   type CleanAudioOverlay,
   type MediaSource,
   type Region,
-} from '@quietcut/core';
-import { buildOverlayExport } from '@quietcut/exporters';
+} from '@snipvox/core';
+import { buildOverlayExport } from '@snipvox/exporters';
 
 /**
  * ffmpeg.wasm wrapper for the mobile app. Lazily loaded so the ~30 MB core
@@ -302,7 +302,7 @@ export async function exportSingleFileWithOverlays(opts: {
     {
       source: { ...opts.source, path: sourceInputName },
       regions: opts.regions,
-      projectName: 'quietcut',
+      projectName: 'snipvox',
     },
     {
       outputPath: outputName,

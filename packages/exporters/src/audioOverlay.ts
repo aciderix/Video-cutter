@@ -1,6 +1,6 @@
-import { keptRegions } from '@quietcut/core';
-import type { CleanAudioOverlay, Region } from '@quietcut/core';
-import { resolveOverlaps } from '@quietcut/core';
+import { keptRegions } from '@snipvox/core';
+import type { CleanAudioOverlay, Region } from '@snipvox/core';
+import { resolveOverlaps } from '@snipvox/core';
 import type { ExportContext } from './types.ts';
 import type { FormatPreset } from './formats.ts';
 

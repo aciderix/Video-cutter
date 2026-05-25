@@ -1,4 +1,4 @@
-import type { MediaSource, Region } from '@quietcut/core';
+import type { MediaSource, Region } from '@snipvox/core';
 
 export interface ExportContext {
   source: MediaSource;

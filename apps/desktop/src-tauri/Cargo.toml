@@ -1,13 +1,13 @@
 [package]
-name = "quietcut"
-version = "0.7.0"
-description = "Quietcut — ultra-fast silence remover"
-authors = ["Quietcut contributors"]
+name = "snipvox"
+version = "0.8.0"
+description = "SnipVox — ultra-fast silence remover"
+authors = ["SnipVox contributors"]
 edition = "2021"
 rust-version = "1.77"
 
 [lib]
-name = "quietcut_lib"
+name = "snipvox_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

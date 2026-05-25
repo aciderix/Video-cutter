@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'app.quietcut.mobile',
-  appName: 'Quietcut',
+  appId: 'app.snipvox.mobile',
+  appName: 'SnipVox',
   webDir: 'dist',
   bundledWebRuntime: false,
   android: {

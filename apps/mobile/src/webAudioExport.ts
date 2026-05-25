@@ -1,5 +1,5 @@
-import type { Region } from '@quietcut/core';
-import { keptRegions } from '@quietcut/core';
+import type { Region } from '@snipvox/core';
+import { keptRegions } from '@snipvox/core';
 
 /**
  * Mobile MP4 re-encode requires a native FFmpeg, which we don't ship in this

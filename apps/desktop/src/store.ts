@@ -5,15 +5,15 @@ import type {
   ProjectFile,
   Region,
   SilenceDetectionSettings,
-} from '@quietcut/core';
-import { DEFAULT_DETECTION, createEmptyProject } from '@quietcut/core';
+} from '@snipvox/core';
+import { DEFAULT_DETECTION, createEmptyProject } from '@snipvox/core';
 
 interface RegionsSnapshot {
   sourceId: string;
   regions: Region[];
 }
 
-interface QuietcutState {
+interface SnipVoxState {
   sources: MediaSource[];
   currentSourceId: string | null;
   regionsBySource: Record<string, Region[]>;
@@ -94,7 +94,7 @@ interface QuietcutState {
 
 const HISTORY_LIMIT = 100;
 
-export const useStore = create<QuietcutState>((set, get) => ({
+export const useStore = create<SnipVoxState>((set, get) => ({
   sources: [],
   currentSourceId: null,
   regionsBySource: {},

@@ -62,7 +62,7 @@ jobs:
           DESK=$(grep -oP '"version": "\K[^"]+' apps/desktop/package.json)
           MOB=$(grep -oP '"version": "\K[^"]+' apps/mobile/package.json)
           CARGO=$(grep -oP '^version = "\K[^"]+' apps/desktop/src-tauri/Cargo.toml)
-          TS=$(grep -oP "QUIETCUT_VERSION = '\K[^']+" packages/core/src/version.ts)
+          TS=$(grep -oP "SNIPVOX_VERSION = '\K[^']+" packages/core/src/version.ts)
           echo "root=$PKG core=$CORE desktop=$DESK mobile=$MOB cargo=$CARGO ts=$TS"
           test "$PKG" = "$CORE" -a "$PKG" = "$DESK" -a "$PKG" = "$MOB" -a "$PKG" = "$CARGO" -a "$PKG" = "$TS"
 
@@ -107,7 +107,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build web bundle
-        run: pnpm --filter @quietcut/desktop build
+        run: pnpm --filter @snipvox/desktop build
 
       - name: Tauri build
         working-directory: apps/desktop
@@ -115,7 +115,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: quietcut-${{ matrix.target }}
+          name: snipvox-${{ matrix.target }}
           path: |
             apps/desktop/src-tauri/target/release/bundle/**/*
 
@@ -139,7 +139,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm --filter @quietcut/mobile build
+      - run: pnpm --filter @snipvox/mobile build
 
       - name: Capacitor sync + Android APK
         working-directory: apps/mobile
@@ -151,5 +151,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: quietcut-android-debug
+          name: snipvox-android-debug
           path: apps/mobile/android/app/build/outputs/apk/debug/app-debug.apk

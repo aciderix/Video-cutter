@@ -1,8 +1,8 @@
-# Quietcut
+# SnipVox
 
 > Ultra-fast, open-source silence remover for video and audio. Free forever.
 
-Quietcut detects silences in your media files and lets you cut them out instantly,
+SnipVox detects silences in your media files and lets you cut them out instantly,
 or hand off the edit to your favorite NLE (DaVinci Resolve, Premiere Pro, Final
 Cut Pro, Kdenlive, and more) via universal interchange formats.
 
@@ -18,16 +18,16 @@ mobile (Android/iOS via Capacitor) builds run end-to-end:
 - Manual editing (split, merge, toggle) with undo/redo
 - Direct MP4 export via FFmpeg `filter_complex` with live progress
 - NLE export to FCPXML, OpenTimelineIO, EDL, and Resolve markers
-- Multi-source projects with `.quietcut` JSON save/load
+- Multi-source projects with `.snipvox` JSON save/load
 - EBU R128 loudness normalization presets (Streaming, Podcast, Broadcast)
 
 ## Why another video editor?
 
 Existing tools either lock you into a subscription, force a cloud upload, work
-on one platform, or stop at a single export format. Quietcut runs locally, ships
+on one platform, or stop at a single export format. SnipVox runs locally, ships
 on every major platform, and exports to every NLE worth its salt.
 
-|                           | Quietcut | Descript | Auphonic | AutoCut       |
+|                           | SnipVox | Descript | Auphonic | AutoCut       |
 | ------------------------- | -------- | -------- | -------- | ------------- |
 | Local processing          | ✅       | ❌       | ❌       | ✅            |
 | Free                      | ✅       | ❌       | ❌       | ❌            |
@@ -64,7 +64,7 @@ TS and works identically on every platform.
 - **Phase 2 — Manual editing** ✅ drag/add/remove regions, undo/redo, shortcuts
 - **Phase 3 — Direct export** ✅ FFmpeg filter_complex, live progress events
 - **Phase 4 — NLE export** ✅ FCPXML, OTIO, EDL, Resolve markers
-- **Phase 5 — Multi-file / projects** ✅ batch processing, save/load `.quietcut`
+- **Phase 5 — Multi-file / projects** ✅ batch processing, save/load `.snipvox`
 - **Phase 6 — Mobile** ✅ Web-Audio-based detection, share sheet, no native FFmpeg
 - **Phase 7 — Advanced** ✅ RMS VAD with hysteresis, EBU R128 loudness presets
 
@@ -83,8 +83,8 @@ pnpm desktop:dev
 pnpm mobile:dev
 
 # Mobile (native)
-pnpm --filter @quietcut/mobile cap:android
-pnpm --filter @quietcut/mobile cap:ios
+pnpm --filter @snipvox/mobile cap:android
+pnpm --filter @snipvox/mobile cap:ios
 
 # Tests + typecheck
 pnpm test
@@ -93,7 +93,7 @@ pnpm typecheck
 
 ## Contributing
 
-Quietcut is MIT licensed and welcomes contributions. See
+SnipVox is MIT licensed and welcomes contributions. See
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) for guidelines and
 [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for a deeper technical tour.
 

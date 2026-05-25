@@ -29,16 +29,16 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@quietcut/core':
+      '@snipvox/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@quietcut/exporters':
+      '@snipvox/exporters':
         specifier: workspace:*
         version: link:../../packages/exporters
-      '@quietcut/timeline':
+      '@snipvox/timeline':
         specifier: workspace:*
         version: link:../../packages/timeline
-      '@quietcut/ui':
+      '@snipvox/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       '@tauri-apps/api':
@@ -120,16 +120,16 @@ importers:
       '@ffmpeg/util':
         specifier: ^0.12.2
         version: 0.12.2
-      '@quietcut/core':
+      '@snipvox/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@quietcut/exporters':
+      '@snipvox/exporters':
         specifier: workspace:*
         version: link:../../packages/exporters
-      '@quietcut/timeline':
+      '@snipvox/timeline':
         specifier: workspace:*
         version: link:../../packages/timeline
-      '@quietcut/ui':
+      '@snipvox/ui':
         specifier: workspace:*
         version: link:../../packages/ui
       lucide-react:
@@ -184,7 +184,7 @@ importers:
 
   packages/exporters:
     dependencies:
-      '@quietcut/core':
+      '@snipvox/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
@@ -197,7 +197,7 @@ importers:
 
   packages/timeline:
     dependencies:
-      '@quietcut/core':
+      '@snipvox/core':
         specifier: workspace:*
         version: link:../core
       react:

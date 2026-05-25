@@ -1,6 +1,6 @@
 {
-  "name": "@quietcut/desktop",
-  "version": "0.7.0",
+  "name": "@snipvox/desktop",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,10 +13,10 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
-    "@quietcut/core": "workspace:*",
-    "@quietcut/exporters": "workspace:*",
-    "@quietcut/timeline": "workspace:*",
-    "@quietcut/ui": "workspace:*",
+    "@snipvox/core": "workspace:*",
+    "@snipvox/exporters": "workspace:*",
+    "@snipvox/timeline": "workspace:*",
+    "@snipvox/ui": "workspace:*",
     "@tauri-apps/api": "^2.2.0",
     "@tauri-apps/plugin-dialog": "^2.2.0",
     "@tauri-apps/plugin-fs": "^2.2.0",

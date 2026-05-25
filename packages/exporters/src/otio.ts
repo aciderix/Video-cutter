@@ -1,4 +1,4 @@
-import { keptRegions } from '@quietcut/core';
+import { keptRegions } from '@snipvox/core';
 import type { ExportContext } from './types.ts';
 import { toFileUri } from './types.ts';
 

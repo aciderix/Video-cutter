@@ -1,6 +1,6 @@
 {
-  "name": "@quietcut/timeline",
-  "version": "0.7.0",
+  "name": "@snipvox/timeline",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",
@@ -10,7 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@quietcut/core": "workspace:*"
+    "@snipvox/core": "workspace:*"
   },
   "peerDependencies": {
     "react": "^19.0.0",

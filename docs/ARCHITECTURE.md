@@ -2,7 +2,7 @@
 
 ## High-level
 
-Quietcut is a TypeScript-first cross-platform application. A single React
+SnipVox is a TypeScript-first cross-platform application. A single React
 codebase drives two native shells:
 
 - **Desktop** — Tauri 2. Rust handles the heavy lifting (FFmpeg invocation,
@@ -13,11 +13,11 @@ codebase drives two native shells:
 
 Everything portable lives in `packages/`:
 
-- `@quietcut/core` — domain types, silence math, project file format.
-- `@quietcut/exporters` — pure-TS generators for EDL, FCPXML, OTIO, Resolve
+- `@snipvox/core` — domain types, silence math, project file format.
+- `@snipvox/exporters` — pure-TS generators for EDL, FCPXML, OTIO, Resolve
   markers and FFmpeg command planners.
-- `@quietcut/timeline` — Canvas/WebGL waveform component.
-- `@quietcut/ui` — accessible Radix-based primitives shared by both apps.
+- `@snipvox/timeline` — Canvas/WebGL waveform component.
+- `@snipvox/ui` — accessible Radix-based primitives shared by both apps.
 
 ## Data model
 

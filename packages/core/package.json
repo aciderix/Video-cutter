@@ -1,6 +1,6 @@
 {
-  "name": "@quietcut/core",
-  "version": "0.7.0",
+  "name": "@snipvox/core",
+  "version": "0.8.0",
   "private": true,
   "type": "module",
   "main": "./src/index.ts",

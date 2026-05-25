@@ -1,5 +1,5 @@
 export * from './types.ts';
-export { QUIETCUT_VERSION } from './version.ts';
+export { SNIPVOX_VERSION } from './version.ts';
 export * from './silence/index.ts';
 export { parseSilenceDetect } from './silence/parseFFmpeg.ts';
 export { silenceFromSamples, samplesToPeaks, estimateNoiseFloorDb } from './silence/fromSamples.ts';
