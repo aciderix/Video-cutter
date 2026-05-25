@@ -95,6 +95,18 @@ jobs:
         working-directory: apps/desktop
         run: pnpm exec tauri icon ../../branding/snipvox-icon.png
 
+      - name: Fetch FFmpeg + ffprobe sidecars
+        shell: bash
+        run: |
+          if [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            TAURI_FFMPEG_TARGET=aarch64-apple-darwin bash scripts/fetch-ffmpeg.sh
+            TAURI_FFMPEG_TARGET=x86_64-apple-darwin  bash scripts/fetch-ffmpeg.sh
+          elif [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            TAURI_FFMPEG_TARGET=x86_64-pc-windows-msvc bash scripts/fetch-ffmpeg.sh
+          else
+            TAURI_FFMPEG_TARGET=x86_64-unknown-linux-gnu bash scripts/fetch-ffmpeg.sh
+          fi
+
       - name: Build web bundle
         run: pnpm --filter @snipvox/desktop build
 

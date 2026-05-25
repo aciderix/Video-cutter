@@ -2,3 +2,5 @@ target/
 gen/
 icons/*.icns
 icons/*.ico
+# FFmpeg sidecars staged by scripts/fetch-ffmpeg.sh; too big for git.
+binaries/

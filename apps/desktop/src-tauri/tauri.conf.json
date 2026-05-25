@@ -30,6 +30,7 @@
     "category": "Video",
     "shortDescription": "Ultra-fast silence remover",
     "longDescription": "Open-source video and audio editor focused on detecting and removing silences. Exports to single file, segmented files, or NLE-compatible formats (FCPXML, OTIO, EDL, etc.).",
-    "icon": ["icons/icon.ico", "icons/icon.icns", "icons/icon.png"]
+    "icon": ["icons/icon.ico", "icons/icon.icns", "icons/icon.png"],
+    "externalBin": ["binaries/ffmpeg", "binaries/ffprobe"]
   }
 }
