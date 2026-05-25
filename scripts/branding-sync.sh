@@ -83,35 +83,11 @@ XML
 cp "$ICON_SOURCE" "$ROOT/apps/mobile/public/snipvox-icon.png"
 cp "$ICON_SOURCE" "$ROOT/apps/desktop/public/snipvox-icon.png"
 
-# 3b) Wordmark: trim transparent whitespace so the empty-state img fills
-# its container instead of looking shrunken in a sea of alpha. Tight
-# bbox + 20 px padding for the gradient drop shadow.
-if [[ "$WORDMARK_EXT" == "png" ]]; then
-python3 - <<PY
-from PIL import Image
-src = Image.open("$WORDMARK_SOURCE").convert('RGBA')
-W, H = src.size
-left, top, right, bottom = W, H, 0, 0
-px = src.load()
-for y in range(H):
-    for x in range(W):
-        if px[x, y][3] > 30:
-            if x < left: left = x
-            if x > right: right = x
-            if y < top: top = y
-            if y > bottom: bottom = y
-PAD = 20
-left = max(0, left - PAD); top = max(0, top - PAD)
-right = min(W, right + PAD); bottom = min(H, bottom + PAD)
-out = src.crop((left, top, right, bottom))
-for d in ["$ROOT/apps/mobile/public/snipvox-wordmark.png",
-          "$ROOT/apps/desktop/public/snipvox-wordmark.png"]:
-    out.save(d, 'PNG')
-PY
-else
-  cp "$WORDMARK_SOURCE" "$ROOT/apps/mobile/public/snipvox-wordmark.$WORDMARK_EXT"
-  cp "$WORDMARK_SOURCE" "$ROOT/apps/desktop/public/snipvox-wordmark.$WORDMARK_EXT"
-fi
+# 3b) Wordmark: copy the master verbatim so the empty-state img keeps
+# the artwork's original aspect ratio. Any auto-trim warps the form
+# factor and makes the rendered <img> look stretched.
+cp "$WORDMARK_SOURCE" "$ROOT/apps/mobile/public/snipvox-wordmark.$WORDMARK_EXT"
+cp "$WORDMARK_SOURCE" "$ROOT/apps/desktop/public/snipvox-wordmark.$WORDMARK_EXT"
 
 # Also keep the SVG fallbacks in place so the <img src="/snipvox-wordmark.svg">
 # in the empty state keeps resolving when only a PNG was provided.
