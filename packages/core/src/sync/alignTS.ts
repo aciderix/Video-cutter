@@ -145,7 +145,7 @@ async function alignSegmentedAsync(
   }
 
   const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 20);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 3);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -192,7 +192,7 @@ function runSegmented(
   }
 
   const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 20);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 3);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -312,7 +312,7 @@ function probesToSegments(
     if (prevIdx < 0 || nextIdx < 0) continue;
     const prev = probes[prevIdx]!;
     const next = probes[nextIdx]!;
-    if (Math.abs(prev.offset - next.offset) > driftToleranceS * 3) continue;
+    if (Math.abs(prev.offset - next.offset) > driftToleranceS * 1.5) continue;
     const mean = (prev.offset + next.offset) / 2;
     const p = probes[i]!;
     p.refStart = p.candStart + mean;
@@ -557,7 +557,12 @@ function mergeConsecutive(segs: AlignedSegment[], toleranceS: number): AlignedSe
       const drift = Math.abs(refOffsetNow - refOffsetLast);
       if (candGap <= toleranceS && drift <= toleranceS) {
         last.candidateEndS = Math.max(last.candidateEndS, s.candidateEndS);
-        last.referenceEndS = Math.max(last.referenceEndS, s.referenceEndS);
+        // Reference end MUST keep a single offset for the whole merged
+        // span — otherwise BufferSource playback ends before the segment
+        // claims to and we hear a hole. Recompute from the first
+        // segment's offset rather than Math.max-ing the ref bounds.
+        last.referenceEndS =
+          last.referenceStartS + (last.candidateEndS - last.candidateStartS);
         last.confidence = Math.min(last.confidence, s.confidence);
         continue;
       }

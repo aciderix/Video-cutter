@@ -6,6 +6,7 @@ import {
   alignAudioBuffers,
   buildRegionsFromSilences,
   coveredReferenceDurationS,
+  estimateNoiseFloorDb,
   outputDuration,
   resolveOverlaps,
   samplesToPeaks,
@@ -1163,16 +1164,69 @@ export function App() {
               {activeTab === 'settings' && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl p-4 space-y-5">
-                    <Field label={`Threshold ${settings.thresholdDb} dB`}>
-                      <Slider
-                        ariaLabel="Threshold"
-                        value={settings.thresholdDb}
-                        onValueChange={(v) => setSettings({ ...settings, thresholdDb: v })}
-                        min={-60}
-                        max={-10}
-                        step={1}
-                      />
-                    </Field>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-zinc-200">Auto noise gate</p>
+                        <p className="text-[10px] text-zinc-500 leading-snug mt-0.5">
+                          Calibrates the threshold on the take's noise floor — robust
+                          against hiss / white noise / fan.
+                          {samplesRef.current && sampleRateRef.current ? (
+                            <>
+                              {' '}Floor ≈{' '}
+                              {estimateNoiseFloorDb(samplesRef.current, sampleRateRef.current).toFixed(
+                                1,
+                              )}{' '}
+                              dB
+                            </>
+                          ) : null}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSettings({
+                            ...settings,
+                            noiseGateMode:
+                              (settings.noiseGateMode ?? 'auto') === 'auto' ? 'fixed' : 'auto',
+                          })
+                        }
+                        className={`shrink-0 h-6 w-11 rounded-full border transition-colors relative ${
+                          (settings.noiseGateMode ?? 'auto') === 'auto'
+                            ? 'bg-emerald-500 border-emerald-400'
+                            : 'bg-zinc-800 border-zinc-700'
+                        }`}
+                        aria-label="Toggle auto noise gate"
+                      >
+                        <span
+                          className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                            (settings.noiseGateMode ?? 'auto') === 'auto' ? 'left-5' : 'left-0.5'
+                          }`}
+                        />
+                      </button>
+                    </div>
+                    {(settings.noiseGateMode ?? 'auto') === 'auto' ? (
+                      <Field label={`Auto margin +${settings.autoMarginDb ?? 6} dB`}>
+                        <Slider
+                          ariaLabel="Auto margin"
+                          value={settings.autoMarginDb ?? 6}
+                          onValueChange={(v) => setSettings({ ...settings, autoMarginDb: v })}
+                          min={0}
+                          max={18}
+                          step={1}
+                        />
+                      </Field>
+                    ) : (
+                      <Field label={`Threshold ${settings.thresholdDb} dB`}>
+                        <Slider
+                          ariaLabel="Threshold"
+                          value={settings.thresholdDb}
+                          onValueChange={(v) => setSettings({ ...settings, thresholdDb: v })}
+                          min={-60}
+                          max={-10}
+                          step={1}
+                        />
+                      </Field>
+                    )}
                     <Field label={`Min silence ${settings.minSilenceDurationMs} ms`}>
                       <Slider
                         ariaLabel="Min silence"

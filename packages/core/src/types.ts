@@ -53,6 +53,12 @@ export interface SilenceDetectionSettings {
   minSilenceDurationMs: number;
   paddingMs: number;
   minKeepDurationMs: number;
+  /** When 'auto', `thresholdDb` is overridden at detection time by the
+   *  signal's 10th-percentile RMS plus `autoMarginDb`. Robust against
+   *  steady background hiss / white noise. */
+  noiseGateMode?: 'fixed' | 'auto';
+  /** Margin above the auto-detected noise floor. Default +6 dB. */
+  autoMarginDb?: Decibels;
 }
 
 export const DEFAULT_DETECTION: SilenceDetectionSettings = {
@@ -60,6 +66,8 @@ export const DEFAULT_DETECTION: SilenceDetectionSettings = {
   minSilenceDurationMs: 500,
   paddingMs: 100,
   minKeepDurationMs: 100,
+  noiseGateMode: 'auto',
+  autoMarginDb: 6,
 };
 
 export interface ProjectFile {
