@@ -8,7 +8,7 @@
     "build": "pnpm copy:ffmpeg && tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "copy:ffmpeg": "mkdir -p public/ffmpeg && cp node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.js public/ffmpeg/ && cp node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm public/ffmpeg/",
+    "copy:ffmpeg": "mkdir -p public/ffmpeg && cp node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.js public/ffmpeg/ && cp node_modules/@ffmpeg/core/dist/esm/ffmpeg-core.wasm public/ffmpeg/",
     "cap": "cap",
     "cap:sync": "pnpm build && cap sync",
     "cap:android": "pnpm build && cap sync android && cap open android",

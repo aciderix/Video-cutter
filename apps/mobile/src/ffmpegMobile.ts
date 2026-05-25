@@ -1,5 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
+import { fetchFile } from '@ffmpeg/util';
 import {
   keptRegions,
   type CleanAudioOverlay,
@@ -113,12 +113,14 @@ async function getFfmpeg(onLog?: FfmpegLogFn): Promise<FFmpeg> {
   loadingPromise = (async () => {
     const ff = new FFmpeg();
     if (onLog) ff.on('log', onLog);
-    // Resolve relative to the document so a Vite "base" path or a
-    // hosted sub-folder keeps working.
+    // ESM build is loaded directly by the module worker via dynamic
+    // import. Same-origin URL means no CORS, no blob wrapping (the
+    // blob-URL flow tripped the Capacitor WebView with "failed to
+    // import ffmpeg-core.js" because the module loader rejected it).
     const base = new URL('ffmpeg/', document.baseURI).toString();
     await ff.load({
-      coreURL: await toBlobURL(`${base}ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${base}ffmpeg-core.wasm`, 'application/wasm'),
+      coreURL: `${base}ffmpeg-core.js`,
+      wasmURL: `${base}ffmpeg-core.wasm`,
     });
     ffmpegInstance = ff;
     return ff;
