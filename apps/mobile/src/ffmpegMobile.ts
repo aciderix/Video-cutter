@@ -1,6 +1,12 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import { keptRegions, type Region } from '@quietcut/core';
+import {
+  keptRegions,
+  type CleanAudioOverlay,
+  type MediaSource,
+  type Region,
+} from '@quietcut/core';
+import { buildOverlayExport } from '@quietcut/exporters';
 
 /**
  * ffmpeg.wasm wrapper for the mobile app. Lazily loaded so the ~30 MB core
@@ -200,6 +206,135 @@ export async function exportPerRegion(opts: {
   }
   await ff.deleteFile(inputName).catch(() => {});
   return { blobs, filenames };
+}
+
+export interface MobileOverlayInput {
+  /** Same id used in OverlayState. */
+  id: string;
+  /** Display name (kept for debugging). */
+  name: string;
+  /** In-memory File handle for ffmpeg.wasm to read on export. */
+  file: File;
+  /** Alignment segments, same shape as CleanAudioOverlay.segments. */
+  segments: CleanAudioOverlay['segments'];
+  /** Toggled in the UI — disabled overlays are skipped entirely. */
+  enabled: boolean;
+  /** Decoded duration. */
+  durationS: number;
+  sampleRate: number;
+  channels: number;
+  globalOffsetS: number;
+  globalConfidence: number;
+}
+
+/**
+ * Single-file export that uses one or more clean-audio overlays. Mirrors
+ * the desktop pipeline: each overlay becomes a separate ffmpeg input,
+ * the audio graph is sliced into pieces (overlay where aligned, source
+ * or silence elsewhere), then everything is concatenated and re-encoded.
+ *
+ * Returns the camera-only export path if no overlay is enabled — caller
+ * is responsible for routing.
+ */
+export async function exportSingleFileWithOverlays(opts: {
+  sourceFile: File;
+  source: MediaSource;
+  regions: Region[];
+  selectedIds: ReadonlySet<string>;
+  preset: MobileFormatPreset;
+  overlays: MobileOverlayInput[];
+  /** "mix" keeps camera audio where no overlay is aligned. "cleanOnly"
+   *  silences those gaps instead. */
+  audioMode: 'mix' | 'cleanOnly';
+  onProgress?: FfmpegProgressFn;
+  onLog?: FfmpegLogFn;
+}): Promise<{ blob: Blob; filename: string }> {
+  const usableOverlays = opts.overlays.filter(
+    (o) => o.enabled && o.segments.length > 0 && o.file,
+  );
+  if (usableOverlays.length === 0) {
+    return exportSingleFile({
+      sourceFile: opts.sourceFile,
+      regions: opts.regions,
+      selectedIds: opts.selectedIds,
+      preset: opts.preset,
+      onProgress: opts.onProgress,
+      onLog: opts.onLog,
+    });
+  }
+
+  const ff = await getFfmpeg(opts.onLog);
+  const sourceInputName = 'input.' + extractExt(opts.sourceFile.name);
+  await ff.writeFile(sourceInputName, await fetchFile(opts.sourceFile));
+
+  // Mirror the OverlayExport shape: each overlay is a separate -i with a
+  // stable filename inside ffmpeg.wasm's MEMFS.
+  const overlayFsNames: string[] = [];
+  const overlayPlan: CleanAudioOverlay[] = [];
+  for (let i = 0; i < usableOverlays.length; i++) {
+    const o = usableOverlays[i]!;
+    const ext = extractExt(o.file.name);
+    const fsName = `overlay_${i}.${ext}`;
+    await ff.writeFile(fsName, await fetchFile(o.file));
+    overlayFsNames.push(fsName);
+    overlayPlan.push({
+      id: o.id,
+      name: o.name,
+      path: fsName,
+      durationS: o.durationS,
+      sampleRate: o.sampleRate,
+      channels: o.channels,
+      segments: o.segments,
+      enabled: true,
+      globalOffsetS: o.globalOffsetS,
+      globalConfidence: o.globalConfidence,
+    });
+  }
+
+  const outputName = 'output' + opts.preset.extension;
+  const plan = buildOverlayExport(
+    {
+      source: { ...opts.source, path: sourceInputName },
+      regions: opts.regions,
+      projectName: 'quietcut',
+    },
+    {
+      outputPath: outputName,
+      overlays: overlayPlan,
+      cleanOnly: opts.audioMode === 'cleanOnly',
+      selectedIds: opts.selectedIds,
+      preset: {
+        id: opts.preset.id,
+        label: opts.preset.label,
+        extension: opts.preset.extension,
+        hasVideo: opts.preset.hasVideo,
+        videoCodec: opts.preset.videoCodec,
+        audioCodec: opts.preset.audioCodec,
+        extraArgs: opts.preset.extraArgs,
+        description: opts.preset.description,
+      },
+    },
+  );
+
+  // buildOverlayExport emits `-y -nostdin -hide_banner -i <src> -i <ov0>
+  // -i <ov1> -filter_complex … <out>`. ffmpeg.wasm doesn't accept
+  // -nostdin / -y (it's headless already), so strip them.
+  const args = plan.args.filter((a) => a !== '-y' && a !== '-nostdin' && a !== '-hide_banner');
+
+  if (opts.onProgress) ff.on('progress', opts.onProgress);
+  await ff.exec(args);
+  if (opts.onProgress) ff.off('progress', opts.onProgress);
+
+  const data = await ff.readFile(outputName);
+  const bytes =
+    data instanceof Uint8Array
+      ? data
+      : new Uint8Array(typeof data === 'string' ? new TextEncoder().encode(data).buffer : data);
+  const filename = baseName(opts.sourceFile.name) + '.clean' + opts.preset.extension;
+  await ff.deleteFile(sourceInputName).catch(() => {});
+  await ff.deleteFile(outputName).catch(() => {});
+  for (const fs of overlayFsNames) await ff.deleteFile(fs).catch(() => {});
+  return { blob: new Blob([bytes as BlobPart], { type: mimeFor(opts.preset) }), filename };
 }
 
 function buildFilterComplexArgs(

@@ -30,6 +30,7 @@ import {
   defaultMobilePreset,
   exportPerRegion,
   exportSingleFile,
+  exportSingleFileWithOverlays,
   findMobilePreset,
 } from './ffmpegMobile.ts';
 import {
@@ -69,6 +70,8 @@ interface OverlayState extends CleanAudioOverlay {
   cachedSamples?: Float32Array;
   /** Sample rate of the cached samples (post-decode, normally 16 kHz). */
   cachedSampleRate?: number;
+  /** Downsampled |amplitude| peaks for the stacked waveform strip. */
+  peaks?: Float32Array;
   /** In-memory File handle for ffmpeg.wasm to read on export. */
   file?: File;
 }
@@ -343,6 +346,7 @@ export function App() {
       void ctx.close();
 
       const id = `ov-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+      const overlayPeaks = samplesToPeaks(mono, 1024);
       const draft: OverlayState = {
         id,
         name: file.name,
@@ -356,6 +360,7 @@ export function App() {
         enabled: true,
         cachedSamples: mono,
         cachedSampleRate: overlaySr,
+        peaks: overlayPeaks,
         file,
       };
       setOverlays((prev) => [...prev, draft]);
@@ -479,18 +484,49 @@ export function App() {
 
     try {
       if (exportMode === 'single') {
-        const { blob, filename } = await exportSingleFile({
-          sourceFile,
-          regions,
-          selectedIds: effectiveSelected,
-          preset,
-          onProgress: ({ progress, time }) => {
-            setProgress({
-              pct: Math.max(0, Math.min(100, progress * 100)),
-              label: `Encoding… ${(time / 1_000_000).toFixed(1)}s`,
+        const useOverlays =
+          audioMode !== 'camera' &&
+          usableOverlays.length > 0 &&
+          usableOverlays.every((o) => o.file);
+        const { blob, filename } = useOverlays
+          ? await exportSingleFileWithOverlays({
+              sourceFile,
+              source,
+              regions,
+              selectedIds: effectiveSelected,
+              preset,
+              overlays: usableOverlays.map((o) => ({
+                id: o.id,
+                name: o.name,
+                file: o.file!,
+                segments: o.segments,
+                enabled: o.enabled,
+                durationS: o.durationS,
+                sampleRate: o.sampleRate,
+                channels: o.channels,
+                globalOffsetS: o.globalOffsetS,
+                globalConfidence: o.globalConfidence,
+              })),
+              audioMode: audioMode === 'cleanOnly' ? 'cleanOnly' : 'mix',
+              onProgress: ({ progress, time }) => {
+                setProgress({
+                  pct: Math.max(0, Math.min(100, progress * 100)),
+                  label: `Mixing… ${(time / 1_000_000).toFixed(1)}s`,
+                });
+              },
+            })
+          : await exportSingleFile({
+              sourceFile,
+              regions,
+              selectedIds: effectiveSelected,
+              preset,
+              onProgress: ({ progress, time }) => {
+                setProgress({
+                  pct: Math.max(0, Math.min(100, progress * 100)),
+                  label: `Encoding… ${(time / 1_000_000).toFixed(1)}s`,
+                });
+              },
             });
-          },
-        });
         const msg = await writeAndShare(blob, filename, `Quietcut — ${filename}`);
         setStatus(msg);
       } else {
@@ -728,13 +764,14 @@ export function App() {
                 />
               </div>
 
-              {/* Overlay strip — colored bands beneath the waveform. */}
+              {/* Stacked clean-track waveforms beneath the camera audio. */}
               {usableOverlays.length > 0 && (
-                <OverlayStrip
+                <OverlayWaveformStack
                   overlays={usableOverlays}
                   duration={source.duration}
                   zoom={zoom}
                   viewOffset={viewOffset}
+                  onToggle={toggleOverlay}
                 />
               )}
 
@@ -877,15 +914,6 @@ export function App() {
                           : audioMode === 'cleanOnly'
                             ? 'silence in gaps'
                             : 'camera fills gaps'}
-                        {audioMode !== 'camera' && (
-                          <>
-                            <br />
-                            <em className="text-amber-400/70">
-                              Overlay export currently runs through the camera-audio path on mobile;
-                              full mix lands in the next build.
-                            </em>
-                          </>
-                        )}
                       </p>
                     </div>
                   )}
@@ -1183,16 +1211,60 @@ function ModeCard({
   );
 }
 
-function OverlayStrip({
+const OVERLAY_PALETTE = ['#34d399', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#22d3ee'];
+const OVERLAY_ROW_HEIGHT = 34;
+
+/**
+ * Stacked mini-waveform per overlay rendered under the camera-audio
+ * timeline. Each row shows the actual clean-track peaks placed where
+ * the alignment maps them onto the reference timeline; unaligned
+ * stretches stay transparent so the user can see which slices ffmpeg
+ * will use on export. Tap a row to mute/unmute that track.
+ */
+function OverlayWaveformStack({
   overlays,
   duration,
   zoom,
   viewOffset,
+  onToggle,
 }: {
-  overlays: CleanAudioOverlay[];
+  overlays: OverlayState[];
   duration: number;
   zoom: number;
   viewOffset: number;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <div className="bg-zinc-950/70 border-t border-zinc-900/60">
+      {overlays.map((o, i) => (
+        <OverlayWaveformRow
+          key={o.id}
+          overlay={o}
+          color={OVERLAY_PALETTE[i % OVERLAY_PALETTE.length]!}
+          duration={duration}
+          zoom={zoom}
+          viewOffset={viewOffset}
+          onToggle={() => onToggle(o.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function OverlayWaveformRow({
+  overlay,
+  color,
+  duration,
+  zoom,
+  viewOffset,
+  onToggle,
+}: {
+  overlay: OverlayState;
+  color: string;
+  duration: number;
+  zoom: number;
+  viewOffset: number;
+  onToggle: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -1212,31 +1284,69 @@ function OverlayStrip({
     const viewSpan = duration / Math.max(1, zoom);
     const viewEnd = viewOffset + viewSpan;
     const timeToX = (t: number) => ((t - viewOffset) / viewSpan) * w;
+    const mid = h / 2;
+    const muted = !overlay.enabled;
 
-    const palette = ['#34d399', '#60a5fa', '#fbbf24', '#f472b6', '#a78bfa', '#22d3ee'];
-    const colors: Record<string, string> = {};
-    overlays.forEach((o, i) => {
-      colors[o.id] = palette[i % palette.length]!;
-    });
+    // Background: subtle row separator.
+    ctx.fillStyle = muted ? 'rgba(255,255,255,0.015)' : 'rgba(255,255,255,0.03)';
+    ctx.fillRect(0, 0, w, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.05)';
+    ctx.fillRect(0, h - 1, w, 1);
 
-    const resolved = resolveOverlaps(overlays, duration);
-    for (const seg of resolved) {
-      if (seg.referenceEndS < viewOffset || seg.referenceStartS > viewEnd) continue;
-      const x = timeToX(seg.referenceStartS);
-      const segW = Math.max(1, timeToX(seg.referenceEndS) - x);
-      const c = colors[seg.overlayId] ?? '#34d399';
-      ctx.fillStyle = c + '40';
-      ctx.fillRect(x, 1, segW, h - 2);
-      ctx.fillStyle = c;
-      ctx.fillRect(x, 1, segW, 2);
+    const peaks = overlay.peaks;
+    if (!peaks || peaks.length === 0 || overlay.durationS <= 0) return;
+    const totalBins = peaks.length;
+    const segs = resolveOverlaps([overlay], duration);
+
+    const fill = muted ? color + '30' : color + 'cc';
+    ctx.fillStyle = fill;
+    for (const s of segs) {
+      if (s.referenceEndS < viewOffset || s.referenceStartS > viewEnd) continue;
+      const x0 = timeToX(s.referenceStartS);
+      const x1 = timeToX(s.referenceEndS);
+      const segW = Math.max(1, x1 - x0);
+      const candDur = s.candidateEndS - s.candidateStartS;
+      if (candDur <= 0) continue;
+      // Number of waveform bars to draw across this segment — one per
+      // device pixel keeps detail crisp at any zoom.
+      const bars = Math.max(2, Math.floor(segW));
+      for (let b = 0; b < bars; b++) {
+        const t = b / bars;
+        const candT = s.candidateStartS + t * candDur;
+        const binIdx = Math.min(totalBins - 1, Math.floor((candT / overlay.durationS) * totalBins));
+        const amp = Math.min(1, peaks[binIdx] ?? 0);
+        const barH = Math.max(1, amp * (h - 4));
+        const x = x0 + b;
+        ctx.fillRect(x, mid - barH / 2, 1, barH);
+      }
+      // Left/right border ticks so the user can read the segment edges.
+      ctx.fillStyle = muted ? color + '50' : color;
+      ctx.fillRect(x0, 1, 1, h - 2);
+      ctx.fillRect(x0 + segW - 1, 1, 1, h - 2);
+      ctx.fillStyle = fill;
     }
-  }, [overlays, duration, zoom, viewOffset]);
+  }, [overlay, color, duration, zoom, viewOffset]);
   return (
-    <canvas
-      ref={canvasRef}
-      aria-label="Clean audio overlay segments"
-      style={{ width: '100%', height: 14, display: 'block' }}
-    />
+    <div className="relative flex items-stretch">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-6 shrink-0 border-r border-zinc-900/60 text-[8px] font-semibold uppercase tracking-wider text-center transition-colors ${
+          overlay.enabled ? 'text-zinc-300' : 'text-zinc-600'
+        }`}
+        aria-label={overlay.enabled ? `Mute ${overlay.name}` : `Unmute ${overlay.name}`}
+        style={{ background: overlay.enabled ? color + '20' : 'transparent' }}
+      >
+        <span style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+          {overlay.enabled ? 'ON' : 'OFF'}
+        </span>
+      </button>
+      <canvas
+        ref={canvasRef}
+        aria-label={`Overlay waveform ${overlay.name}`}
+        style={{ flex: 1, height: OVERLAY_ROW_HEIGHT, display: 'block', minWidth: 0 }}
+      />
+    </div>
   );
 }
 
