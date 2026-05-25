@@ -147,13 +147,32 @@ jobs:
 
       - name: Apply SnipVox launcher icons to Capacitor android
         run: |
+          set -euo pipefail
           SRC=apps/desktop/src-tauri/icons/android
           DST=apps/mobile/android/app/src/main/res
           for d in hdpi mdpi xhdpi xxhdpi xxxhdpi; do
-            cp "$SRC/mipmap-$d/ic_launcher.png"            "$DST/mipmap-$d/ic_launcher.png"
-            cp "$SRC/mipmap-$d/ic_launcher_round.png"      "$DST/mipmap-$d/ic_launcher_round.png"
-            cp "$SRC/mipmap-$d/ic_launcher_foreground.png" "$DST/mipmap-$d/ic_launcher_foreground.png"
+            cp "$SRC/mipmap-$d/ic_launcher.png"       "$DST/mipmap-$d/ic_launcher.png"
+            cp "$SRC/mipmap-$d/ic_launcher_round.png" "$DST/mipmap-$d/ic_launcher_round.png"
           done
+          python3 -m pip install --quiet Pillow
+          python3 - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          src = Image.open('branding/snipvox-icon.png').convert('RGBA')
+          content = src.crop(src.getbbox())
+          densities = {'mdpi': 108, 'hdpi': 162, 'xhdpi': 216, 'xxhdpi': 324, 'xxxhdpi': 432}
+          SAFE = 0.66
+          for d, sz in densities.items():
+              safe = int(sz * SAFE)
+              scale = min(safe / content.width, safe / content.height)
+              cw, ch = int(content.width * scale), int(content.height * scale)
+              resized = content.resize((cw, ch), Image.LANCZOS)
+              canvas = Image.new('RGBA', (sz, sz), (0, 0, 0, 0))
+              canvas.paste(resized, ((sz - cw) // 2, (sz - ch) // 2), resized)
+              out = Path(f'apps/mobile/android/app/src/main/res/mipmap-{d}/ic_launcher_foreground.png')
+              canvas.save(out, 'PNG')
+              print('wrote', out)
+          PY
           mkdir -p "$DST/values"
           cat > "$DST/values/ic_launcher_background.xml" <<'XML'
           <?xml version='1.0' encoding='utf-8'?>
