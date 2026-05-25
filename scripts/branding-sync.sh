@@ -85,7 +85,9 @@ cp "$ICON_SOURCE" "$ROOT/apps/desktop/public/snipvox-icon.png"
 
 # 3b) Wordmark: trim transparent whitespace so the empty-state img fills
 # its container instead of looking shrunken in a sea of alpha. Tight
-# bbox + 20 px padding for the gradient drop shadow.
+# bbox + 8 px padding. alpha>80 drops the faint reflection/shadow under
+# the wordmark — otherwise the bbox stretches ~12 px below the baseline
+# and the rendered image looks vertically padded at h-32.
 if [[ "$WORDMARK_EXT" == "png" ]]; then
 python3 - <<PY
 from PIL import Image
@@ -95,12 +97,12 @@ left, top, right, bottom = W, H, 0, 0
 px = src.load()
 for y in range(H):
     for x in range(W):
-        if px[x, y][3] > 30:
+        if px[x, y][3] > 80:
             if x < left: left = x
             if x > right: right = x
             if y < top: top = y
             if y > bottom: bottom = y
-PAD = 20
+PAD = 8
 left = max(0, left - PAD); top = max(0, top - PAD)
 right = min(W, right + PAD); bottom = min(H, bottom + PAD)
 out = src.crop((left, top, right, bottom))
