@@ -18,6 +18,9 @@ apps/mobile/android/
 apps/mobile/ios/
 apps/mobile/.gradle/
 
+# Locally-bundled ffmpeg.wasm core (copied from node_modules by `copy:ffmpeg`)
+apps/mobile/public/ffmpeg/
+
 # Cache
 .turbo/
 .vite/

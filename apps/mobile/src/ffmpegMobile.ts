@@ -101,9 +101,11 @@ let ffmpegInstance: FFmpeg | null = null;
 let loadingPromise: Promise<FFmpeg> | null = null;
 
 /**
- * Lazy singleton. The CDN-hosted core is cross-origin which means the
- * WebView would normally refuse to import it from a blob — we fetch the
- * .js and .wasm files and re-host them as blob URLs to dodge that.
+ * Lazy singleton. We bundle the ffmpeg-core files under /ffmpeg so they
+ * load from the same origin as the app (https://localhost on Capacitor
+ * Android, file:// on iOS). Loading from a CDN via blob URL trips the
+ * WebView's Worker import policy and dies with "failed to import
+ * ffmpeg-core.js" right before the first export.
  */
 async function getFfmpeg(onLog?: FfmpegLogFn): Promise<FFmpeg> {
   if (ffmpegInstance) return ffmpegInstance;
@@ -111,10 +113,12 @@ async function getFfmpeg(onLog?: FfmpegLogFn): Promise<FFmpeg> {
   loadingPromise = (async () => {
     const ff = new FFmpeg();
     if (onLog) ff.on('log', onLog);
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.10/dist/umd';
+    // Resolve relative to the document so a Vite "base" path or a
+    // hosted sub-folder keeps working.
+    const base = new URL('ffmpeg/', document.baseURI).toString();
     await ff.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      coreURL: await toBlobURL(`${base}ffmpeg-core.js`, 'text/javascript'),
+      wasmURL: await toBlobURL(`${base}ffmpeg-core.wasm`, 'application/wasm'),
     });
     ffmpegInstance = ff;
     return ff;
