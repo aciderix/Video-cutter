@@ -55,7 +55,11 @@ ROOT = Path("$ROOT")
 src = Image.open("$ICON_SOURCE").convert('RGBA')
 content = src.crop(src.getbbox())
 densities = {'mdpi': 108, 'hdpi': 162, 'xhdpi': 216, 'xxhdpi': 324, 'xxxhdpi': 432}
-SAFE = 0.66
+# The hard adaptive-icon safe zone is 66 % (72 of 108 dp). SnipVox's logo
+# is a circle, so the launcher's own circular / squircle mask follows
+# the same shape — we can push to 88 % for proper visual weight without
+# the gradient edge being clipped.
+SAFE = 0.88
 for d, sz in densities.items():
     safe = int(sz * SAFE)
     scale = min(safe / content.width, safe / content.height)
