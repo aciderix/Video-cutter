@@ -140,12 +140,16 @@ async function alignSegmentedAsync(
       confidence,
     });
     if (!bestGlobal || r.bestCost < bestGlobal.bestCost) bestGlobal = r;
-    onProgress?.((i + 1) / starts.length);
+    onProgress?.(((i + 1) / starts.length) * 0.75);
     await tick();
   }
 
+  await refineProbesAroundConsensus(reference, candidate, probes, starts, chunkFrames, minConfidence, (r) =>
+    onProgress?.(0.75 + r * 0.25),
+  );
+
   const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 3);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -191,8 +195,10 @@ function runSegmented(
     if (!bestGlobal || r.bestCost < bestGlobal.bestCost) bestGlobal = r;
   }
 
+  void refineProbesAroundConsensusSync(reference, candidate, probes, starts, chunkFrames, minConfidence);
+
   const segments = probesToSegments(probes, minConfidence, candidate.hopSeconds * 20);
-  const merged = mergeConsecutive(segments, candidate.hopSeconds * 3);
+  const merged = mergeConsecutive(segments, candidate.hopSeconds * 10);
   const [globalOffsetS, globalConfidence] = bestGlobal
     ? [
         bestGlobal.bestFrame * reference.hopSeconds,
@@ -266,12 +272,158 @@ interface ChunkProbe {
  * ones over breath / fricative-heavy segments — that otherwise show up
  * as missing words in the played-back clean track.
  */
+/**
+ * Second-pass DTW refinement. The unconstrained per-chunk search latches
+ * onto phantom matches on noisy material (steady hiss / white noise),
+ * producing offsets that bounce between -0.1 s and +0.6 s for the same
+ * content. We compute a consensus offset from the confident probes,
+ * then re-run DTW for any probe that disagrees — but constrained to a
+ * ±2 s window around (candStart + consensus). Inside that window the
+ * search can't wander into a phantom match far away, so the refined
+ * probe lands on the real alignment.
+ *
+ * Probes whose own offset already sits inside the consensus tolerance
+ * keep their fine-grained refined value. High-confidence outliers
+ * (likely a different take re-cut into the candidate) are left alone:
+ * see the trust check inside the loop.
+ */
+const REFINE_WINDOW_S = 2.0;
+
+function consensusOffset(probes: ChunkProbe[], minConfidence: number): number | null {
+  const offsets: number[] = [];
+  for (const p of probes) if (p.confidence >= minConfidence) offsets.push(p.offset);
+  if (offsets.length < 3) return null;
+  offsets.sort((a, b) => a - b);
+  return offsets[Math.floor(offsets.length / 2)]!;
+}
+
+function refineProbeAroundOffset(
+  reference: MfccSequence,
+  candidate: MfccSequence,
+  probe: ChunkProbe,
+  start: number,
+  chunkFrames: number,
+  consensus: number,
+): void {
+  const refHop = reference.hopSeconds;
+  const centerFrame = Math.round((probe.candStart + consensus) / refHop);
+  const half = Math.round(REFINE_WINDOW_S / refHop);
+  const r = coarseToFineSlide(
+    reference,
+    candidate,
+    start,
+    chunkFrames,
+    centerFrame - half,
+    centerFrame + half,
+  );
+  if (!isFinite(r.bestCost)) return;
+  const refStart = r.bestFrame * refHop;
+  probe.refStart = refStart;
+  probe.refEnd = refStart + (probe.candEnd - probe.candStart);
+  probe.offset = refStart - probe.candStart;
+  probe.confidence = confidenceFromCosts(r.bestCost, r.baselineCost);
+}
+
+function shouldRefine(probe: ChunkProbe, consensus: number, tolS: number, trustS: number): boolean {
+  const drift = Math.abs(probe.offset - consensus);
+  if (drift <= tolS) return false;
+  // Trust high-confidence outliers — likely a genuine different take.
+  if (probe.confidence >= trustS) return false;
+  return true;
+}
+
+async function refineProbesAroundConsensus(
+  reference: MfccSequence,
+  candidate: MfccSequence,
+  probes: ChunkProbe[],
+  starts: number[],
+  chunkFrames: number,
+  minConfidence: number,
+  onProgress?: (ratio: number) => void,
+): Promise<void> {
+  const consensus = consensusOffset(probes, minConfidence);
+  if (consensus === null) {
+    onProgress?.(1);
+    return;
+  }
+  const tolS = candidate.hopSeconds * 10; // 100 ms
+  const trustS = 0.7;
+  let processed = 0;
+  for (let i = 0; i < probes.length; i++) {
+    if (shouldRefine(probes[i]!, consensus, tolS, trustS)) {
+      refineProbeAroundOffset(reference, candidate, probes[i]!, starts[i]!, chunkFrames, consensus);
+      await tick();
+    }
+    processed++;
+    onProgress?.(processed / probes.length);
+  }
+}
+
+function refineProbesAroundConsensusSync(
+  reference: MfccSequence,
+  candidate: MfccSequence,
+  probes: ChunkProbe[],
+  starts: number[],
+  chunkFrames: number,
+  minConfidence: number,
+): void {
+  const consensus = consensusOffset(probes, minConfidence);
+  if (consensus === null) return;
+  const tolS = candidate.hopSeconds * 10;
+  const trustS = 0.7;
+  for (let i = 0; i < probes.length; i++) {
+    if (shouldRefine(probes[i]!, consensus, tolS, trustS)) {
+      refineProbeAroundOffset(reference, candidate, probes[i]!, starts[i]!, chunkFrames, consensus);
+    }
+  }
+}
+
 function probesToSegments(
   probes: ChunkProbe[],
   minConfidence: number,
   driftToleranceS: number,
 ): AlignedSegment[] {
   if (probes.length === 0) return [];
+
+  // Pass 0 — dominant offset snap. On noisy material the per-chunk DTW
+  // often locks onto phantom matches a few hundred ms off the true
+  // alignment, and the tail probe in particular can end up several
+  // seconds away. Take the median offset of confident probes as the
+  // global anchor, then pull any outlier (whether confident or not)
+  // back onto it. Same-content alignments now produce a clean stack of
+  // offsets instead of bouncing around the noise floor.
+  const confidentOffsets: number[] = [];
+  for (const p of probes) {
+    if (p.confidence >= minConfidence) confidentOffsets.push(p.offset);
+  }
+  if (confidentOffsets.length >= 3) {
+    confidentOffsets.sort((a, b) => a - b);
+    const dominantOffset = confidentOffsets[Math.floor(confidentOffsets.length / 2)]!;
+    // Aggressive snap: anything more than half the drift tolerance away
+    // from the dominant offset is treated as MFCC localization noise and
+    // pulled onto the consensus. The result is most chunks share one
+    // exact offset and merge into a single segment that the BufferSource
+    // scheduler can play back without per-chunk seams. Chunks within
+    // tolerance keep their fine-grained refined offset.
+    //
+    // Don't snap high-confidence outliers — they're typically a genuinely
+    // different take re-cut into the candidate (e.g. out-of-order
+    // editing). Trust the DTW when it's sure of itself.
+    const snapToleranceS = driftToleranceS / 2;
+    const trustThreshold = 0.7;
+    for (const p of probes) {
+      if (Math.abs(p.offset - dominantOffset) <= snapToleranceS) continue;
+      if (p.confidence >= trustThreshold) continue;
+      p.refStart = p.candStart + dominantOffset;
+      p.refEnd = p.candEnd + dominantOffset;
+      p.offset = dominantOffset;
+      // Snapped probes don't deserve their original confidence (their
+      // own MFCC localization was off) but still beat a rejection
+      // since they fill the candidate timeline at the right place.
+      p.confidence = Math.max(0.25, p.confidence * 0.5);
+    }
+  }
+
   const accepted = new Array<boolean>(probes.length).fill(false);
   for (let i = 0; i < probes.length; i++) {
     if (probes[i]!.confidence >= minConfidence) accepted[i] = true;
@@ -360,6 +512,8 @@ function coarseToFineSlide(
   candidate: MfccSequence,
   candStartFrame: number,
   candLengthFrames: number,
+  searchLo?: number,
+  searchHi?: number,
 ): SlideResult {
   if (
     candidate.nFrames === 0 ||
@@ -370,6 +524,11 @@ function coarseToFineSlide(
   }
   const band = Math.max(Math.floor(candLengthFrames / 8), 8);
   const coarseHop = Math.max(Math.floor(candLengthFrames / 24), 4);
+  const lo = Math.max(0, searchLo ?? 0);
+  const hi = Math.min(reference.nFrames - candLengthFrames, searchHi ?? reference.nFrames - candLengthFrames);
+  if (hi < lo) {
+    return { bestFrame: lo, bestCost: Infinity, baselineCost: Infinity };
+  }
   const coarse = slidingDtwCost(
     reference,
     candidate,
@@ -377,12 +536,12 @@ function coarseToFineSlide(
     candLengthFrames,
     coarseHop,
     band,
-    0,
-    reference.nFrames - candLengthFrames,
+    lo,
+    hi,
   );
   if (coarseHop <= 1) return coarse;
-  const fineLo = Math.max(0, coarse.bestFrame - coarseHop);
-  const fineHi = Math.min(reference.nFrames - candLengthFrames, coarse.bestFrame + coarseHop);
+  const fineLo = Math.max(lo, coarse.bestFrame - coarseHop);
+  const fineHi = Math.min(hi, coarse.bestFrame + coarseHop);
   const fine = slidingDtwCost(
     reference,
     candidate,
